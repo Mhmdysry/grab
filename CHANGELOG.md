@@ -7,9 +7,8 @@ All notable changes in **Grab Expressive** (a Material 3 Expressive fork of [`As
 ## [Latest] — Release Notes
 
 ### Highlights
-- **In-App About Screen — Fork Overview & What's New**: Added a dedicated **"About this fork"** card in **Settings → About** crediting [`Asta39/grab`](https://github.com/Asta39/grab) and highlighting all Material 3 Expressive & UX improvements introduced in **Grab Expressive**, plus a direct link to the upstream repository.
-- **Automated Rich Release Notes**: Updated `.github/workflows/android.yml` to publish structured release notes from `CHANGELOG.md` and recent commits on every GitHub Release (visible both on GitHub and inside the in-app updater).
-- **Updated `README.md` & App Screenshots**: Overhauled `README.md` with an **About This Fork** comparison table, updated architecture docs, a new 3-up banner, and 6 real Grab Expressive screenshots across AMOLED Mono Dark and Grab Amber Light themes.
+- **Unified Cross-Platform Releases (Android + Windows + macOS)**: Chained `.github/workflows/desktop.yml` from `.github/workflows/android.yml` via `workflow_call` so every GitHub Release automatically builds and attaches Android APKs (`arm64-v8a`, `armeabi-v7a`, `x86_64`), Windows (`grab-windows-x64.zip`), and macOS (`grab-macos.dmg`) together.
+- **Updated `README.md`**: Added direct download links and installation instructions for Android, macOS, and Windows pointing to `Mhmdysry/grab` releases.
 
 ---
 

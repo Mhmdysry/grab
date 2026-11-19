@@ -9,6 +9,7 @@
 A free, open-source Android app for saving video, audio, and subtitles from TikTok, YouTube, Instagram, Pinterest, X, Facebook, and [1,800+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) — rebuilt with a Google **Material 3 Expressive** design system, a **Koda-style floating dock & shape-morphing Companion Orb**, a **translucent floating share card**, and **zero-window silent Instant Grab**.
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-141414?style=flat-square)](LICENSE)
+[![Platforms: Android, macOS, Windows](https://img.shields.io/badge/platforms-Android%20·%20macOS%20·%20Windows-FFD84D?style=flat-square&labelColor=141414)](#install)
 [![Latest Release](https://img.shields.io/github/v/release/Mhmdysry/grab?style=flat-square&color=FFD84D&labelColor=141414)](https://github.com/Mhmdysry/grab/releases/latest)
 [![Built with Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?style=flat-square)](https://flutter.dev)
 [![Powered by yt-dlp](https://img.shields.io/badge/powered%20by-yt--dlp-FF0000?style=flat-square)](https://github.com/yt-dlp/yt-dlp)
@@ -92,21 +93,33 @@ Grab Expressive runs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](htt
 
 ## Install
 
-Download the latest APK from [**Releases**](https://github.com/Mhmdysry/grab/releases/latest):
+Download the latest version from [**Releases**](https://github.com/Mhmdysry/grab/releases/latest):
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
 | **Android (64-bit, most phones)** | [`grab-expressive-v…-arm64-v8a.apk`](https://github.com/Mhmdysry/grab/releases/latest) | Android 7.0 (API 24) or newer |
-| **Android (32-bit, older phones)** | [`grab-expressive-v…-armeabi-v7a.apk`](https://github.com/Mhmdysry/grab/releases/latest) | Android 7.0 (API 24) or newer |
-| **Android (x86_64 emulators/PC)** | [`grab-expressive-v…-x86_64.apk`](https://github.com/Mhmdysry/grab/releases/latest) | Android 7.0 (API 24) or newer |
+| **Android (32-bit / x86_64)** | [`grab-expressive-v…-armeabi-v7a.apk`](https://github.com/Mhmdysry/grab/releases/latest) · [`x86_64.apk`](https://github.com/Mhmdysry/grab/releases/latest) | Android 7.0 (API 24) or newer |
+| **macOS** | [`grab-macos.dmg`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-macos.dmg) | macOS 12 or newer, Apple silicon or Intel |
+| **Windows** | [`grab-windows-x64.zip`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-windows-x64.zip) | Windows 10 or 11, 64-bit |
 
-Open the APK to install. Subsequent updates install cleanly in place from inside the app (**Settings → About → Check now**), preserving all downloads, settings, and history.
+### Android
+Open the APK and allow your browser or file manager to install apps when asked. Subsequent updates install cleanly in place from inside the app (**Settings → About → Check now**), preserving all downloads, settings, and history.
+
+### macOS
+1. Open `grab-macos.dmg` and drag **Grab** into **Applications**.
+2. The first time, right-click Grab in Applications and choose **Open** (the app isn't notarized by Apple yet).
+3. On first launch, Grab automatically downloads `yt-dlp` (and `FFmpeg` if not already installed).
+
+### Windows
+1. Unzip `grab-windows-x64.zip` anywhere (for example, `Documents\Grab`).
+2. Run `Grab.exe`. If SmartScreen warns about an unknown publisher, choose **More info → Run anyway**.
+3. On first launch, Grab automatically fetches `yt-dlp` and `FFmpeg` into its folder.
 
 ---
 
 ## Build from source
 
-**Prerequisites:** Flutter (stable), Android SDK with platform 37, JDK 17.
+**Prerequisites:** Flutter (stable), Android SDK with platform 37, JDK 17. For desktop: Xcode (macOS) or Visual Studio with C++ (Windows).
 
 ```bash
 git clone https://github.com/Mhmdysry/grab.git
@@ -115,6 +128,16 @@ flutter pub get
 dart run build_runner build
 flutter build apk --release --split-per-abi
 ```
+
+Desktop:
+
+```bash
+flutter build macos --release        # on macOS
+macos/dmg/make_dmg.sh build/macos/Build/Products/Release/Grab.app grab-macos.dmg
+flutter build windows --release      # on Windows
+```
+
+The [Android & Release workflow](.github/workflows/android.yml) chains the [Desktop workflow](.github/workflows/desktop.yml) automatically so every release publishes Android APKs, `grab-macos.dmg`, and `grab-windows-x64.zip` together.
 
 APKs are output to `build/app/outputs/flutter-apk/`.
 

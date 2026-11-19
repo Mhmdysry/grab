@@ -3,6 +3,12 @@ name: Desktop
 # Builds Grab for Windows and macOS. Run it by hand to test, or publish a
 # GitHub release and the packages are attached to it automatically.
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to attach the desktop builds to (e.g. v1.0.21)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:

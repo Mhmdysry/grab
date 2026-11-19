@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,10 +63,12 @@ jobs:
           retention-days: 14
 
       - name: Publish GitHub Release for in-app updates
+        id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v1.0.${{ github.run_number }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "grab-expressive-${TAG}-arm64-v8a.apk"
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "grab-expressive-${TAG}-armeabi-v7a.apk"
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk "grab-expressive-${TAG}-x86_64.apk"
@@ -101,3 +105,11 @@ jobs:
             "grab-expressive-${TAG}-x86_64.apk" \
             --title "Grab Expressive ${TAG}" \
             --notes-file release_notes.md
+
+  build-desktop:
+    needs: build-android
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop.yml
+    with:
+      tag: ${{ needs.build-android.outputs.tag }}

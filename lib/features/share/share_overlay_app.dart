@@ -161,11 +161,7 @@ Future<void> runSilentInstantGrab(
         site: Value(platform),
         mode: effectiveMode.name,
         maxHeight: Value(
-          effectiveMode == DownloadMode.audioOnly
-              ? null
-              : (settings.preferredHeight <= 0
-                    ? null
-                    : settings.preferredHeight),
+          effectiveMode == DownloadMode.audioOnly ? null : settings.maxHeight,
         ),
         container: Value(settings.container),
         audioFormat: Value(settings.audioFormat),

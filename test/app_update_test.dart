@@ -33,4 +33,28 @@ void main() {
     expect(r.apkFor(['arm64-v8a', 'armeabi-v7a'])!.url, 'b');
     expect(r.apkFor(['x86_64'])!.url, 'u');
   });
+
+  test('fork release URL and auto-incremented CI build versions match', () {
+    expect(repoUrl, 'https://github.com/Mhmdysry/grab');
+    expect(isNewerVersion('v1.0.13', '1.0.12'), isTrue);
+    final r = Release.fromJson({
+      'tag_name': 'v1.0.13',
+      'assets': [
+        {
+          'name': 'grab-expressive-v1.0.13-arm64-v8a.apk',
+          'browser_download_url': 'https://github.com/Mhmdysry/grab/releases/download/v1.0.13/grab-expressive-v1.0.13-arm64-v8a.apk',
+          'size': 1024,
+        },
+        {
+          'name': 'grab-expressive-v1.0.13-armeabi-v7a.apk',
+          'browser_download_url': 'https://github.com/Mhmdysry/grab/releases/download/v1.0.13/grab-expressive-v1.0.13-armeabi-v7a.apk',
+          'size': 1024,
+        },
+      ],
+    });
+    expect(
+      r.apkFor(['arm64-v8a', 'armeabi-v7a'])?.name,
+      'grab-expressive-v1.0.13-arm64-v8a.apk',
+    );
+  });
 }

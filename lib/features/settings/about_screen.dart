@@ -244,7 +244,7 @@ class _AboutScreenState extends State<AboutScreen> {
                       (
                         Icons.code_rounded,
                         'Source code',
-                        'github.com/Asta39/grab',
+                        'github.com/Mhmdysry/grab',
                         repoUrl,
                       ),
                       (

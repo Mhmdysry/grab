@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Where releases are published.
-const repoUrl = 'https://github.com/Asta39/grab';
-const _latestApi = 'https://api.github.com/repos/Asta39/grab/releases/latest';
+const repoUrl = 'https://github.com/Mhmdysry/grab';
+const _latestApi = 'https://api.github.com/repos/Mhmdysry/grab/releases/latest';
 
 const _channel = MethodChannel('grab/app');
 

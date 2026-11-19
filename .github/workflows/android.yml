@@ -8,6 +8,8 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +33,11 @@ jobs:
         run: flutter test
 
       - name: Build release APKs (split per ABI)
-        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
+        run: >-
+          flutter build apk --release --split-per-abi
+          --build-name=1.0.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
+          --android-skip-build-dependency-validation
 
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
@@ -53,3 +59,19 @@ jobs:
           name: grab-expressive-x86_64
           path: build/app/outputs/flutter-apk/app-x86_64-release.apk
           retention-days: 14
+
+      - name: Publish GitHub Release for in-app updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "grab-expressive-${TAG}-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "grab-expressive-${TAG}-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "grab-expressive-${TAG}-x86_64.apk"
+          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TAG" \
+            "grab-expressive-${TAG}-arm64-v8a.apk" \
+            "grab-expressive-${TAG}-armeabi-v7a.apk" \
+            "grab-expressive-${TAG}-x86_64.apk" \
+            --title "Grab Expressive ${TAG}" \
+            --notes "Automated Material 3 Expressive build (${TAG}, build ${{ github.run_number }})."

@@ -24,19 +24,25 @@ android {
         versionName = flutter.versionName
     }
 
-    // Release signing comes from android/key.properties (never committed).
-    // Without it, release builds fall back to the debug key so they still run locally.
+    // Release signing comes from android/key.properties if present, otherwise
+    // uses the committed android/app/expressive-release.jks so every CI and local
+    // build shares the exact same certificate and can update in place on Android.
     val keyProps = Properties().apply {
         val f = rootProject.file("key.properties")
         if (f.exists()) f.inputStream().use { load(it) }
     }
     signingConfigs {
-        if (keyProps.getProperty("storeFile") != null) {
-            create("release") {
+        create("release") {
+            if (keyProps.getProperty("storeFile") != null) {
                 storeFile = file(keyProps.getProperty("storeFile"))
                 storePassword = keyProps.getProperty("storePassword")
                 keyAlias = keyProps.getProperty("keyAlias")
                 keyPassword = keyProps.getProperty("keyPassword")
+            } else {
+                storeFile = file("expressive-release.jks")
+                storePassword = "grabexpressive"
+                keyAlias = "grab_expressive"
+                keyPassword = "grabexpressive"
             }
         }
     }
@@ -51,7 +57,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             // youtubedl-android uses reflection (Jackson); shrinking would break it.
             isMinifyEnabled = false
             isShrinkResources = false

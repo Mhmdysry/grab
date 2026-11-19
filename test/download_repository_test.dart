@@ -183,4 +183,34 @@ void main() {
     await settle();
     expect((await jobs()).single.progress, 10.2);
   });
+
+  test('kick starts a silent placeholder job once updated to queued and sync updates speed', () async {
+    const jobId = 'silent-1';
+    await db.into(db.downloadJobs).insert(
+      DownloadJobsCompanion.insert(
+        id: jobId,
+        url: info.url,
+        title: 'Fetching TikTok link…',
+        mode: DownloadMode.video.name,
+        status: JobStatus.running,
+        createdAt: DateTime(2026, 1, 1),
+      ),
+    );
+    await (db.update(db.downloadJobs)..where((t) => t.id.equals(jobId))).write(
+      const DownloadJobsCompanion(
+        title: Value('Clip'),
+        itemId: Value('v1'),
+        status: Value(JobStatus.queued),
+      ),
+    );
+    repo.markOnline();
+    await repo.kick();
+    expect(engine.started.keys, contains(jobId));
+    expect((await jobs()).single.status, JobStatus.running);
+
+    final speedsFuture = repo.speeds.first;
+    engine.emit(EngineEvent(id: jobId, status: 'sync', speed: '3.50MiB/s'));
+    final speeds = await speedsFuture;
+    expect(speeds[jobId], '3.5 MB/s');
+  });
 }

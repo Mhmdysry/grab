@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
@@ -18,6 +18,7 @@
     <style name="Theme.Grab.Translucent" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackgroundFallback" tools:targetApi="q">@android:color/transparent</item>
         <item name="android:colorBackground">@android:color/transparent</item>
         <item name="android:colorBackgroundCacheHint">@null</item>
         <item name="android:windowContentOverlay">@null</item>

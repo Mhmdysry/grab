@@ -79,7 +79,16 @@ class DownloadService : Service() {
             val manager = context.getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) return
+            ) {
+                runCatching {
+                    android.widget.Toast.makeText(
+                        context.applicationContext,
+                        if (ok) "Grab: Saved $title" else "Grab: Download failed ($title)",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(DONE_CHANNEL_ID) == null) {
                 manager.createNotificationChannel(
                     NotificationChannel(DONE_CHANNEL_ID, "Finished downloads", NotificationManager.IMPORTANCE_DEFAULT)

@@ -294,29 +294,45 @@ class DownloadRepository {
   // ---- queue ----
 
   var _pumping = false;
+  var _pumpRequested = false;
+
+  /// Marks the queue online after a live network operation (such as yt-dlp fetch) succeeds.
+  void markOnline() {
+    _online = true;
+  }
+
+  /// Prompts the queue to start any pending [JobStatus.queued] jobs.
+  Future<void> kick() => _pump();
 
   Future<void> _pump() async {
-    if (_pumping || !_online) return;
+    if (!_online) return;
+    if (_pumping) {
+      _pumpRequested = true;
+      return;
+    }
     _pumping = true;
     try {
-      while (true) {
-        final running = await (_db.select(
-          _db.downloadJobs,
-        )..where((t) => t.status.equalsValue(JobStatus.running))).get();
-        if (running.length >= maxParallel) return;
-        final next =
-            await (_db.select(_db.downloadJobs)
-                  ..where((t) => t.status.equalsValue(JobStatus.queued))
-                  ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
-                  ..limit(1))
-                .getSingleOrNull();
-        if (next == null) return;
-        await _set(
-          next.id,
-          const DownloadJobsCompanion(status: Value(JobStatus.running)),
-        );
-        await _start(next);
-      }
+      do {
+        _pumpRequested = false;
+        while (true) {
+          final running = await (_db.select(
+            _db.downloadJobs,
+          )..where((t) => t.status.equalsValue(JobStatus.running))).get();
+          if (running.length >= maxParallel) break;
+          final next =
+              await (_db.select(_db.downloadJobs)
+                    ..where((t) => t.status.equalsValue(JobStatus.queued))
+                    ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
+                    ..limit(1))
+                  .getSingleOrNull();
+          if (next == null) break;
+          await _set(
+            next.id,
+            const DownloadJobsCompanion(status: Value(JobStatus.running)),
+          );
+          await _start(next);
+        }
+      } while (_pumpRequested && _online);
     } finally {
       _pumping = false;
     }
@@ -364,8 +380,17 @@ class DownloadRepository {
   }
 
   Future<void> _onEvent(EngineEvent e) async {
+    if (e.status == 'sync') {
+      if (e.id.isNotEmpty && !isSideTask(e.id)) {
+        _setSpeed(e.id, e.speed);
+      }
+      _db.notifyUpdates({TableUpdate.onTable(_db.downloadJobs)});
+      return;
+    }
     if (isSideTask(e.id)) return;
     switch (e.status) {
+      case 'starting':
+        _db.notifyUpdates({TableUpdate.onTable(_db.downloadJobs)});
       case 'running':
         _setSpeed(e.id, e.speed);
         final p = e.progress ?? 0;

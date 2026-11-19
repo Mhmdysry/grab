@@ -38,8 +38,15 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
     init {
         MethodChannel(messenger, "grab/engine").setMethodCallHandler { call, result -> handle(call, result) }
         EventChannel(messenger, "grab/engine/progress").setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { sink = events }
-            override fun onCancel(arguments: Any?) { sink = null }
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                sink?.let { allSinks.remove(it) }
+                sink = events
+                if (events != null) allSinks.add(events)
+            }
+            override fun onCancel(arguments: Any?) {
+                sink?.let { allSinks.remove(it) }
+                sink = null
+            }
         })
     }
 
@@ -115,7 +122,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
                 }
                 result.success(null)
             }
-            "activeIds" -> result.success(active.keys.toList())
+            "activeIds" -> result.success((active.keys + activeFetches.keys).toList())
             "extractAudio" -> {
                 val id = call.argument<String>("id")!!
                 val input = call.argument<String>("input")!!
@@ -346,11 +353,18 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
     }
 
     private fun refreshService() {
-        val snapshot = active.values.toList()
+        val snapshot = currentServiceSnapshot()
         main.post { DownloadService.update(context, snapshot) }
     }
 
-    private fun emit(event: Map<String, Any?>) = main.post { sink?.success(event) }
+    private fun emit(event: Map<String, Any?>) = main.post {
+        val primary = sink
+        primary?.success(event)
+        val status = event["status"] as? String
+        val id = event["id"] as? String ?: ""
+        val speed = if (status == "running") event["speed"] as? String else null
+        notifyAllEnginesSync(exclude = primary, id = id, speed = speed, delayMs = 120L)
+    }
 
     private fun background(result: MethodChannel.Result, work: () -> Any?) {
         pool.execute {
@@ -365,13 +379,58 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
 
     companion object {
         private val pool = Executors.newCachedThreadPool()
+        private val mainHandler = Handler(Looper.getMainLooper())
         @Volatile private var ready = false
+
+        /** All connected EventChannel sinks across MainActivity and ShareActivity engines. */
+        private val allSinks = java.util.concurrent.CopyOnWriteArraySet<EventChannel.EventSink>()
 
         /** Active jobs across all engines in this process: id -> (title, progress). */
         private val active = ConcurrentHashMap<String, Pair<String, Float>>()
 
+        /** In-flight silent Instant Grab metadata fetches keeping DownloadService in the foreground. */
+        private val activeFetches = ConcurrentHashMap<String, String>()
+
         /** FFmpeg processes started by [runExtract], so they can be canceled. */
         private val processes = ConcurrentHashMap<String, Process>()
+
+        private fun currentServiceSnapshot(): List<Pair<String, Float>> =
+            active.values.toList() + activeFetches.values.map { it to 0f }
+
+        fun beginSilentFetch(context: Context, id: String, title: String) {
+            if (id != "silent_boot") activeFetches.remove("silent_boot")
+            activeFetches[id] = title
+            val snapshot = currentServiceSnapshot()
+            mainHandler.post { DownloadService.update(context.applicationContext, snapshot) }
+        }
+
+        fun endSilentFetch(context: Context, id: String?) {
+            if (id != null) activeFetches.remove(id)
+            activeFetches.remove("silent_boot")
+            val snapshot = currentServiceSnapshot()
+            mainHandler.post { DownloadService.update(context.applicationContext, snapshot) }
+        }
+
+        fun notifyAllEnginesSync(
+            exclude: EventChannel.EventSink? = null,
+            id: String = "",
+            speed: String? = null,
+            delayMs: Long = 0L,
+        ) {
+            val syncEvent = mapOf("id" to id, "status" to "sync", "speed" to speed)
+            val task = Runnable {
+                for (s in allSinks) {
+                    if (s !== exclude) {
+                        runCatching { s.success(syncEvent) }
+                    }
+                }
+            }
+            if (delayMs > 0L) {
+                mainHandler.postDelayed(task, delayMs)
+            } else {
+                mainHandler.post(task)
+            }
+        }
 
         @Synchronized
         private fun ensureReady(context: Context) {

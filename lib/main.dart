@@ -33,9 +33,13 @@ Future<void> shareMain() async {
   await AppLog.init(entrypoint: 'shareMain');
   final prefs = await SharedPreferences.getInstance();
   AudioArt.instance = AudioArt(prefs);
+  final container = ProviderContainer(
+    overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+  );
+  initShareOverlayBridge(container);
   runApp(
-    ProviderScope(
-      overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+    UncontrolledProviderScope(
+      container: container,
       child: const ShareOverlayApp(),
     ),
   );

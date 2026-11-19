@@ -61,6 +61,9 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    beforeOpen: (details) async {
+      await customStatement('PRAGMA busy_timeout = 5000');
+    },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
         // Modes were redefined: "videoAndAudio" used to mean the video with its sound,

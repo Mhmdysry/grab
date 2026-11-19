@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -22,6 +23,304 @@ import '../../data/repositories/download_repository.dart';
 import '../../data/settings/app_settings.dart';
 import '../home/clip_preview.dart';
 import '../home/fetch_controller.dart';
+
+const _shareChannel = MethodChannel('grab/share');
+var _silentJobCounter = 0;
+
+Future<void> _showShareNativeToast(String message) async {
+  try {
+    await _shareChannel.invokeMethod<void>('showToast', {'message': message});
+  } catch (_) {}
+}
+
+Future<void> _notifyShareSync() async {
+  try {
+    await _shareChannel.invokeMethod<void>('notifySync');
+  } catch (_) {}
+}
+
+/// Pushes non-silent incoming shared text to [_ShareOverlayHost] so the
+/// translucent floating card opens and animates.
+class IncomingUiShare extends Notifier<({int seq, String? raw})> {
+  @override
+  ({int seq, String? raw}) build() => (seq: 0, raw: null);
+
+  void emit(String? raw) => state = (seq: state.seq + 1, raw: raw);
+}
+
+final incomingUiShareProvider =
+    NotifierProvider<IncomingUiShare, ({int seq, String? raw})>(
+      IncomingUiShare.new,
+    );
+
+/// Initializes the `grab/share` MethodChannel at the [ProviderContainer] level
+/// before `runApp` so silent Instant Grab downloads execute even when
+/// `ShareActivity` finishes immediately in `onCreate` and no VSYNC frames are
+/// pumped.
+void initShareOverlayBridge(ProviderContainer container) {
+  // Eagerly instantiate DownloadRepository so it is subscribed to Engine events.
+  container.read(downloadRepositoryProvider);
+
+  _shareChannel.setMethodCallHandler((call) async {
+    if (call.method == 'sharedText') {
+      await _dispatchSharedPayload(
+        container,
+        call.arguments as String?,
+        silent: false,
+      );
+    } else if (call.method == 'instantShareText') {
+      await _dispatchSharedPayload(
+        container,
+        call.arguments as String?,
+        silent: true,
+      );
+    }
+  });
+
+  _shareChannel.invokeMethod<dynamic>('takeSharedPayload').then((payload) {
+    if (payload is Map) {
+      final text = payload['text'] as String?;
+      final silent = payload['silent'] == true;
+      _dispatchSharedPayload(container, text, silent: silent);
+    }
+  }, onError: (_) {});
+}
+
+Future<void> _dispatchSharedPayload(
+  ProviderContainer container,
+  String? raw, {
+  required bool silent,
+}) async {
+  AppLog.info(
+    'ShareOverlay',
+    'Incoming shared text (silent=$silent): "$raw"',
+  );
+  try {
+    await container.read(sharedPrefsProvider).reload();
+    container.invalidate(settingsProvider);
+  } catch (_) {}
+
+  final useSilent = silent || container.read(settingsProvider).instantGrab;
+  if (useSilent) {
+    await runSilentInstantGrab(container, raw);
+  } else {
+    container.read(incomingUiShareProvider.notifier).emit(raw);
+  }
+}
+
+/// Headless zero-window Instant Grab pipeline.
+///
+/// Runs directly on [container] with zero dependency on widget mounting,
+/// VSYNC frames (`addPostFrameCallback`), or `BuildContext` permission sheets.
+Future<void> runSilentInstantGrab(
+  ProviderContainer container,
+  String? raw,
+) async {
+  try {
+    await _shareChannel.invokeMethod<void>('closeOverlay');
+  } catch (_) {}
+
+  final link = extractLink(raw) ?? raw?.trim();
+  if (link == null || link.isEmpty) {
+    AppLog.warn('ShareOverlay', 'Silent Instant Grab: no link found in "$raw"');
+    await _showShareNativeToast('Grab: No link found in shared text.');
+    try {
+      await _shareChannel.invokeMethod<void>('endSilentGrab');
+    } catch (_) {}
+    return;
+  }
+
+  final repo = container.read(downloadRepositoryProvider);
+  final db = container.read(databaseProvider);
+  final settings = container.read(settingsProvider);
+  final effectiveMode = settings.defaultMode == DownloadMode.subtitlesOnly
+      ? DownloadMode.video
+      : settings.defaultMode;
+  final platform = platformOf(link);
+  final placeholderTitle = platform != null
+      ? 'Fetching $platform link…'
+      : 'Fetching link…';
+  final jobId =
+      '${DateTime.now().microsecondsSinceEpoch}-s${_silentJobCounter++}';
+
+  try {
+    await _shareChannel.invokeMethod<void>('beginSilentGrab', {
+      'id': jobId,
+      'title': placeholderTitle,
+    });
+  } catch (_) {}
+
+  // Insert an active row immediately so it appears in Grab's Home Downloads list
+  // and Companion Orb right away even while yt-dlp resolves shortlinks.
+  try {
+    await db.into(db.downloadJobs).insert(
+      DownloadJobsCompanion.insert(
+        id: jobId,
+        url: link,
+        title: placeholderTitle,
+        site: Value(platform),
+        mode: effectiveMode.name,
+        maxHeight: Value(
+          effectiveMode == DownloadMode.audioOnly
+              ? null
+              : (settings.preferredHeight <= 0
+                    ? null
+                    : settings.preferredHeight),
+        ),
+        container: Value(settings.container),
+        audioFormat: Value(settings.audioFormat),
+        status: JobStatus.running,
+        createdAt: DateTime.now(),
+      ),
+    );
+    await _notifyShareSync();
+  } catch (e, st) {
+    AppLog.error(
+      'ShareOverlay',
+      'Silent Instant Grab failed to insert initial job row',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
+  AppLog.info(
+    'ShareOverlay',
+    'Silent Instant Grab: fetching metadata for $link (jobId=$jobId)',
+  );
+
+  MediaInfo? info;
+  Object? fetchErr;
+  StackTrace? fetchSt;
+  try {
+    info = await container.read(engineProvider).fetch(link);
+  } catch (e, st) {
+    fetchErr = FetchController.friendlyError(e);
+    fetchSt = st;
+  }
+
+  if (fetchErr != null || info == null) {
+    final msg = '${fetchErr ?? "Couldn't read link metadata"}';
+    AppLog.error(
+      'ShareOverlay',
+      'Silent Instant Grab fetch failed for $link: $msg',
+      error: fetchErr,
+      stackTrace: fetchSt,
+    );
+    try {
+      await (db.update(db.downloadJobs)..where((t) => t.id.equals(jobId)))
+          .write(
+            DownloadJobsCompanion(
+              status: const Value(JobStatus.failed),
+              progress: const Value(0),
+              error: Value(msg),
+              finishedAt: Value(DateTime.now()),
+            ),
+          );
+    } catch (_) {}
+    try {
+      await _shareChannel.invokeMethod<void>('endSilentGrab', {'id': jobId});
+    } catch (_) {}
+    await _notifyShareSync();
+    await _showShareNativeToast("Grab: Couldn't fetch link ($msg)");
+    return;
+  }
+
+  repo.markOnline();
+  AppLog.info(
+    'ShareOverlay',
+    'Silent Instant Grab: fetched "${info.title}" (playlist=${info.isPlaylist}, entries=${info.entries.length})',
+  );
+
+  try {
+    if (info.isPlaylist && info.entries.isNotEmpty) {
+      await (db.delete(db.downloadJobs)..where((t) => t.id.equals(jobId))).go();
+      final options = info.optionsFor(effectiveMode);
+      final idx = settings.preferredOptionIndex(options);
+      final selected = options.isEmpty
+          ? null
+          : options[idx.clamp(0, options.length - 1)];
+      for (final e in info.entries) {
+        await repo.enqueue(
+          DownloadRequest(
+            info: MediaInfo(
+              url: e.url,
+              title: e.title,
+              id: e.id,
+              thumbnail: e.thumbnail,
+              duration: e.duration,
+              site: info.site,
+            ),
+            mode: effectiveMode,
+            maxHeight: effectiveMode == DownloadMode.audioOnly
+                ? null
+                : selected?.height,
+            container: settings.container,
+            audioFormat: settings.audioFormat,
+          ),
+        );
+      }
+      try {
+        await _shareChannel.invokeMethod<void>('endSilentGrab', {'id': jobId});
+      } catch (_) {}
+      await _notifyShareSync();
+      await _showShareNativeToast(
+        'Grab: Downloading ${info.entries.length} items',
+      );
+      AppLog.info(
+        'ShareOverlay',
+        'Silent Instant Grab: queued ${info.entries.length} playlist items',
+      );
+    } else {
+      final options = info.optionsFor(effectiveMode);
+      final idx = settings.preferredOptionIndex(options);
+      final selected = options.isEmpty
+          ? null
+          : options[idx.clamp(0, options.length - 1)];
+      await (db.update(db.downloadJobs)..where((t) => t.id.equals(jobId)))
+          .write(
+            DownloadJobsCompanion(
+              url: Value(info.url.isNotEmpty ? info.url : link),
+              title: Value(info.title),
+              itemId: Value(info.id),
+              thumbnail: Value(info.thumbnail),
+              site: Value(info.site ?? platform),
+              mode: Value(effectiveMode.name),
+              maxHeight: Value(
+                effectiveMode == DownloadMode.audioOnly
+                    ? null
+                    : selected?.height,
+              ),
+              estimatedBytes: Value(selected?.bytes),
+              container: Value(settings.container),
+              audioFormat: Value(settings.audioFormat),
+              status: const Value(JobStatus.queued),
+            ),
+          );
+      await repo.kick();
+      try {
+        await _shareChannel.invokeMethod<void>('endSilentGrab', {'id': jobId});
+      } catch (_) {}
+      await _notifyShareSync();
+      await _showShareNativeToast('Grab: Downloading ${info.title}');
+      AppLog.info(
+        'ShareOverlay',
+        'Silent Instant Grab: started download jobId=$jobId title="${info.title}"',
+      );
+    }
+  } catch (e, st) {
+    AppLog.error(
+      'ShareOverlay',
+      'Silent Instant Grab enqueue failed',
+      error: e,
+      stackTrace: st,
+    );
+    try {
+      await _shareChannel.invokeMethod<void>('endSilentGrab', {'id': jobId});
+    } catch (_) {}
+    await _notifyShareSync();
+    await _showShareNativeToast('Grab: Failed to start download ($e)');
+  }
+}
 
 /// Visual phases of the floating share download card.
 enum ShareCardPhase { loading, ready, error, queued, progress }
@@ -84,8 +383,6 @@ class _ShareOverlayHost extends ConsumerStatefulWidget {
 
 class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     with SingleTickerProviderStateMixin {
-  static const _channel = MethodChannel('grab/share');
-
   late final AnimationController _entrance = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 340),
@@ -94,7 +391,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   ShareCardPhase _phase = ShareCardPhase.loading;
   String? _sharedUrl;
   String? _customError;
-  var _silentInstant = false;
+  var _handledSeq = 0;
   var _expanded = false;
   var _busyEnqueue = false;
   String? _queuedJobId;
@@ -106,26 +403,13 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   @override
   void initState() {
     super.initState();
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'sharedText') {
-        await _handleIncoming(call.arguments as String?, silent: false);
-      } else if (call.method == 'instantShareText') {
-        await _handleIncoming(call.arguments as String?, silent: true);
-      }
-    });
-    _channel.invokeMethod<dynamic>('takeSharedPayload').then((payload) {
-      if (payload is Map) {
-        final text = payload['text'] as String?;
-        final silent = payload['silent'] == true;
-        _handleIncoming(text, silent: silent);
-      }
-    }, onError: (_) {});
-  }
-
-  Future<void> _showNativeToast(String message) async {
-    try {
-      await _channel.invokeMethod<void>('showToast', {'message': message});
-    } catch (_) {}
+    final initial = ref.read(incomingUiShareProvider);
+    if (initial.seq > _handledSeq) {
+      _handledSeq = initial.seq;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _handleUiIncoming(initial.raw);
+      });
+    }
   }
 
   @override
@@ -135,17 +419,12 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     super.dispose();
   }
 
-  Future<void> _handleIncoming(String? raw, {bool silent = false}) async {
-    AppLog.info('ShareOverlay', 'Incoming shared text (silent=$silent): "$raw"');
+  Future<void> _handleUiIncoming(String? raw) async {
     _autoCloseTimer?.cancel();
-    await ref.read(sharedPrefsProvider).reload();
-    ref.invalidate(settingsProvider);
     if (!mounted) return;
 
     final link = extractLink(raw) ?? raw?.trim();
-    final useSilent = silent || ref.read(settingsProvider).instantGrab;
     setState(() {
-      _silentInstant = useSilent;
       _dragOffset = 0;
       _expanded = false;
       _busyEnqueue = false;
@@ -162,23 +441,11 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
       }
     });
 
-    if (useSilent) {
-      if (link == null || link.isEmpty) {
-        await _showNativeToast('Grab: No link found in shared text.');
-        await _dismiss();
-        return;
-      }
-      // Make sure the overlay window is closed immediately if not already closed natively.
-      try {
-        await _channel.invokeMethod('closeOverlay');
-      } catch (_) {}
+    final reduced = Pop.reduceMotion(context);
+    if (reduced) {
+      _entrance.value = 1.0;
     } else {
-      final reduced = Pop.reduceMotion(context);
-      if (reduced) {
-        _entrance.value = 1.0;
-      } else {
-        _entrance.forward(from: 0.0);
-      }
+      _entrance.forward(from: 0.0);
     }
 
     if (link != null && link.isNotEmpty) {
@@ -195,7 +462,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
       await _entrance.reverse();
     }
     try {
-      await _channel.invokeMethod('closeOverlay');
+      await _shareChannel.invokeMethod('closeOverlay');
     } catch (_) {}
   }
 
@@ -203,9 +470,9 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     _autoCloseTimer?.cancel();
     try {
       if (_queuedJobId != null) {
-        await _channel.invokeMethod('openMainApp', {'tab': 'home'});
+        await _shareChannel.invokeMethod('openMainApp', {'tab': 'home'});
       } else {
-        await _channel.invokeMethod('openMainApp', {'url': _sharedUrl});
+        await _shareChannel.invokeMethod('openMainApp', {'url': _sharedUrl});
       }
     } catch (_) {}
   }
@@ -232,6 +499,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
       return;
     }
 
+    final repo = ref.read(downloadRepositoryProvider)..markOnline();
     String? jobId;
     var count = 1;
     if (info.isPlaylist && info.entries.isNotEmpty) {
@@ -241,7 +509,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
         return;
       }
       final settings = ref.read(settingsProvider);
-      final repo = ref.read(downloadRepositoryProvider);
       final mode = fetch.mode == DownloadMode.subtitlesOnly
           ? DownloadMode.video
           : fetch.mode;
@@ -272,23 +539,10 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
       jobId = await ref.read(fetchControllerProvider.notifier).download();
     }
 
+    await _notifyShareSync();
     if (!mounted) return;
     setState(() => _busyEnqueue = false);
-    if (jobId == null) {
-      if (_silentInstant) {
-        await _showNativeToast('Grab: Failed to start download.');
-      }
-      return;
-    }
-
-    if (_silentInstant) {
-      final label = count > 1 ? '$count items' : info.title;
-      await _showNativeToast('Grab: Downloading $label');
-      try {
-        await _channel.invokeMethod('closeOverlay');
-      } catch (_) {}
-      return;
-    }
+    if (jobId == null) return;
 
     Haptics.success();
     final keepOpen = ref.read(settingsProvider).shareKeepOpen;
@@ -315,6 +569,13 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(incomingUiShareProvider, (prev, next) {
+      if (next.seq != _handledSeq) {
+        _handledSeq = next.seq;
+        _handleUiIncoming(next.raw);
+      }
+    });
+
     ref.listen(fetchControllerProvider.select((s) => s.info), (prev, next) {
       if (!mounted) return;
       if (next is AsyncData && next.value != null) {
@@ -325,7 +586,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
             ..clear()
             ..addAll([for (var i = 0; i < info.entries.length; i++) i]);
         });
-        if (_silentInstant || ref.read(settingsProvider).instantGrab) {
+        if (ref.read(settingsProvider).instantGrab) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _phase == ShareCardPhase.ready) _download();
           });
@@ -334,17 +595,10 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
         }
       } else if (next is AsyncError) {
         setState(() => _phase = ShareCardPhase.error);
-        if (_silentInstant) {
-          _showNativeToast("Grab: Couldn't fetch link (${next.error})");
-        }
       } else if (next is AsyncLoading && _phase != ShareCardPhase.queued) {
         setState(() => _phase = ShareCardPhase.loading);
       }
     });
-
-    if (_silentInstant) {
-      return const SizedBox.shrink();
-    }
 
     final fetchState = ref.watch(fetchControllerProvider);
     final fetchCtrl = ref.read(fetchControllerProvider.notifier);

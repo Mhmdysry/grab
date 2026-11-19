@@ -72,9 +72,12 @@ class FetchController extends Notifier<FetchState> {
     final result = await AsyncValue.guard(
       () => ref.read(engineProvider).fetch(url),
     );
+    if (result is AsyncData && result.value != null) {
+      ref.read(downloadRepositoryProvider).markOnline();
+    }
     state = state.copyWith(
       info: result is AsyncError
-          ? AsyncError(_friendly(result.error!), result.stackTrace!)
+          ? AsyncError(friendlyError(result.error!), result.stackTrace!)
           : result,
     );
     state = state.copyWith(
@@ -123,30 +126,29 @@ class FetchController extends Notifier<FetchState> {
     // Unchanged ends mean "from the start" / "to the end".
     final start = t == null || t.start <= 0 ? null : t.start;
     final end = t == null || (d != null && t.end >= d) ? null : t.end;
-    return ref
-        .read(downloadRepositoryProvider)
-        .enqueue(
-          DownloadRequest(
-            info: info,
-            mode: state.mode,
-            maxHeight: state.selected?.height,
-            estimatedBytes: state.selected?.bytes == null
-                ? null
-                : (state.selected!.bytes! * state.keptFraction).round(),
-            trimStart: state.mode == DownloadMode.subtitlesOnly ? null : start,
-            trimEnd: state.mode == DownloadMode.subtitlesOnly ? null : end,
-            subtitles: SubtitleChoice(
-              langs: langs,
-              includeAuto: auto,
-              embed: state.embedSubs,
-            ),
-            container: settings.container,
-            audioFormat: settings.audioFormat,
-          ),
-        );
+    final repo = ref.read(downloadRepositoryProvider)..markOnline();
+    return repo.enqueue(
+      DownloadRequest(
+        info: info,
+        mode: state.mode,
+        maxHeight: state.selected?.height,
+        estimatedBytes: state.selected?.bytes == null
+            ? null
+            : (state.selected!.bytes! * state.keptFraction).round(),
+        trimStart: state.mode == DownloadMode.subtitlesOnly ? null : start,
+        trimEnd: state.mode == DownloadMode.subtitlesOnly ? null : end,
+        subtitles: SubtitleChoice(
+          langs: langs,
+          includeAuto: auto,
+          embed: state.embedSubs,
+        ),
+        container: settings.container,
+        audioFormat: settings.audioFormat,
+      ),
+    );
   }
 
-  static Object _friendly(Object e) {
+  static Object friendlyError(Object e) {
     if (e is PlatformException) {
       final msg = e.message ?? '';
       final line = msg

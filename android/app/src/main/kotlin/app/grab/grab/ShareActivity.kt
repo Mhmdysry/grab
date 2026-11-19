@@ -36,6 +36,7 @@ import java.lang.ref.WeakReference
  */
 class ShareActivity : FlutterActivity() {
     private var globalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private val transparentDrawable = ColorDrawable(Color.TRANSPARENT)
 
     override fun getRenderMode(): RenderMode = RenderMode.texture
 
@@ -56,12 +57,21 @@ class ShareActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyWindowTransparency()
-        val hadEngine = FlutterEngineCache.getInstance().get(ENGINE_ID) != null
         val text = extractSharedText(intent)
         val forceUi = intent?.getBooleanExtra(EXTRA_FORCE_UI, false) == true
         val silentInstant = !forceUi && !text.isNullOrBlank() && isInstantGrabEnabled(applicationContext)
 
-        if (!hadEngine) {
+        if (silentInstant) {
+            // Start DownloadService while ShareActivity is in the foreground so Android/OEM
+            // background freezers (e.g. BBA2) never throttle or kill the process during yt-dlp fetch.
+            EnginePlugin.beginSilentFetch(
+                applicationContext,
+                "silent_boot",
+                "Instant Grab: fetching link…",
+            )
+        }
+
+        if (!dartBridgeReady) {
             pendingSharedText = text
             pendingSharedSilent = silentInstant
         }
@@ -80,7 +90,7 @@ class ShareActivity : FlutterActivity() {
         activeActivity = WeakReference(this)
         suppressTransition(isOpen = true)
 
-        if (hadEngine) {
+        if (dartBridgeReady) {
             pendingSharedText = null
             pendingSharedSilent = false
             shareChannel?.invokeMethod(
@@ -118,7 +128,8 @@ class ShareActivity : FlutterActivity() {
 
     private fun applyWindowTransparency() {
         runCatching {
-            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+            window.setBackgroundDrawable(transparentDrawable)
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             window.statusBarColor = Color.TRANSPARENT
             window.navigationBarColor = Color.TRANSPARENT
@@ -130,11 +141,17 @@ class ShareActivity : FlutterActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 decor.isForceDarkAllowed = false
             }
-            ensureViewsTransparent(decor)
+            ensureViewsTransparent(decor, decor)
+            // CRITICAL: Never set decor.background = null! Passing a null drawable to
+            // DecorView.setWindowBackground(null) causes Samsung One UI / Android DecorView
+            // to replace the window background with mWindowBackgroundFallback (0xFF010102).
+            if (decor.background !== transparentDrawable) {
+                window.setBackgroundDrawable(transparentDrawable)
+            }
         }
     }
 
-    private fun ensureViewsTransparent(view: android.view.View?) {
+    private fun ensureViewsTransparent(view: android.view.View?, decor: android.view.View) {
         if (view == null) return
         when (view) {
             is android.view.TextureView -> {
@@ -148,13 +165,17 @@ class ShareActivity : FlutterActivity() {
                 }
             }
             is android.view.ViewGroup -> {
-                runCatching { view.background = null }
+                if (view !== decor) {
+                    runCatching { view.setBackgroundColor(Color.TRANSPARENT) }
+                }
                 for (i in 0 until view.childCount) {
-                    ensureViewsTransparent(view.getChildAt(i))
+                    ensureViewsTransparent(view.getChildAt(i), decor)
                 }
             }
             else -> {
-                runCatching { view.background = null }
+                if (view !== decor) {
+                    runCatching { view.setBackgroundColor(Color.TRANSPARENT) }
+                }
             }
         }
     }
@@ -166,12 +187,24 @@ class ShareActivity : FlutterActivity() {
         val text = extractSharedText(intent)
         val forceUi = intent.getBooleanExtra(EXTRA_FORCE_UI, false)
         val silentInstant = !forceUi && !text.isNullOrBlank() && isInstantGrabEnabled(applicationContext)
-        pendingSharedText = null
-        pendingSharedSilent = false
-        shareChannel?.invokeMethod(
-            if (silentInstant) "instantShareText" else "sharedText",
-            text ?: "",
-        )
+        if (silentInstant) {
+            EnginePlugin.beginSilentFetch(
+                applicationContext,
+                "silent_boot",
+                "Instant Grab: fetching link…",
+            )
+        }
+        if (dartBridgeReady) {
+            pendingSharedText = null
+            pendingSharedSilent = false
+            shareChannel?.invokeMethod(
+                if (silentInstant) "instantShareText" else "sharedText",
+                text ?: "",
+            )
+        } else {
+            pendingSharedText = text
+            pendingSharedSilent = silentInstant
+        }
         if (silentInstant) {
             showNativeToast(applicationContext, "Instant Grab: starting download…")
             closeWithNoAnim()
@@ -245,6 +278,7 @@ class ShareActivity : FlutterActivity() {
         private var shareChannel: MethodChannel? = null
         private var pendingSharedText: String? = null
         private var pendingSharedSilent: Boolean = false
+        @Volatile private var dartBridgeReady: Boolean = false
 
         private fun isInstantGrabEnabled(context: Context): Boolean {
             return try {
@@ -277,6 +311,7 @@ class ShareActivity : FlutterActivity() {
                 loader.ensureInitializationComplete(appContext, null)
             }
 
+            dartBridgeReady = false
             val engine = FlutterEngine(appContext)
             GeneratedPluginRegistrant.registerWith(engine)
             // Remove AudioServicePlugin from the share overlay engine before ShareActivity attaches
@@ -293,6 +328,7 @@ class ShareActivity : FlutterActivity() {
                 setMethodCallHandler { call, result ->
                     when (call.method) {
                         "takeSharedPayload" -> {
+                            dartBridgeReady = true
                             val text = pendingSharedText
                             val silent = pendingSharedSilent
                             pendingSharedText = null
@@ -309,9 +345,27 @@ class ShareActivity : FlutterActivity() {
                             }
                         }
                         "takeSharedText" -> {
+                            dartBridgeReady = true
                             result.success(pendingSharedText)
                             pendingSharedText = null
                             pendingSharedSilent = false
+                        }
+                        "beginSilentGrab" -> {
+                            val id = call.argument<String>("id") ?: "silent_boot"
+                            val title = call.argument<String>("title") ?: "Instant Grab: fetching link…"
+                            EnginePlugin.beginSilentFetch(appContext, id, title)
+                            EnginePlugin.notifyAllEnginesSync()
+                            result.success(null)
+                        }
+                        "endSilentGrab" -> {
+                            val id = call.argument<String>("id")
+                            EnginePlugin.endSilentFetch(appContext, id)
+                            EnginePlugin.notifyAllEnginesSync()
+                            result.success(null)
+                        }
+                        "notifySync" -> {
+                            EnginePlugin.notifyAllEnginesSync()
+                            result.success(null)
                         }
                         "showToast" -> {
                             val msg = call.argument<String>("message") ?: ""

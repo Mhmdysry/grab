@@ -265,12 +265,9 @@ class _ClipPreviewState extends State<ClipPreview> {
             ),
           ),
         ),
-        AnimatedSize(
-          duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: t == null || _duration <= 0
-              ? const SizedBox(width: double.infinity)
+        if (m3.motion.reduced(context))
+          (t == null || _duration <= 0
+              ? const SizedBox.shrink()
               : Padding(
                   padding: const EdgeInsets.only(top: 14),
                   child: TrimBar(
@@ -285,8 +282,30 @@ class _ClipPreviewState extends State<ClipPreview> {
                     },
                     onSeek: _seek,
                   ),
-                ),
-        ),
+                ))
+        else
+          AnimatedSize(
+            duration: m3.motion.defaultSpatialDuration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: t == null || _duration <= 0
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: TrimBar(
+                      duration: _duration,
+                      start: t.start,
+                      end: t.end,
+                      position: c == null ? null : pos,
+                      thumbnail: widget.info.thumbnail,
+                      onChanged: (s, e, moved) {
+                        widget.onTrim(s, e);
+                        _seek(moved);
+                      },
+                      onSeek: _seek,
+                    ),
+                  ),
+          ),
       ],
     );
   }

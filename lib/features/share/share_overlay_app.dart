@@ -900,16 +900,23 @@ class ShareOverlayCard extends StatelessWidget {
             ),
           ),
         ),
-        AnimatedSize(
-          duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
-          curve: m3.motion.defaultSpatialCurve,
-          alignment: Alignment.topCenter,
-          child: !expanded
-              ? const SizedBox(width: double.infinity)
+        if (m3.motion.reduced(context))
+          (!expanded
+              ? const SizedBox.shrink()
               : isPlaylist
               ? _buildPlaylistExpanded(context, info)
-              : _buildSingleExpanded(context, info, activeMode),
-        ),
+              : _buildSingleExpanded(context, info, activeMode))
+        else
+          AnimatedSize(
+            duration: m3.motion.defaultSpatialDuration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !expanded
+                ? const SizedBox(width: double.infinity)
+                : isPlaylist
+                ? _buildPlaylistExpanded(context, info)
+                : _buildSingleExpanded(context, info, activeMode),
+          ),
         const SizedBox(height: 14),
         Row(
           children: [

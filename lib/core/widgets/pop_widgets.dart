@@ -877,29 +877,43 @@ class _PopTabBarState extends State<PopTabBar> {
                   ),
                 ),
                 Flexible(
-                  child: AnimatedSize(
-                    duration: m3.motion.resolve(
-                      context,
-                      m3.motion.defaultSpatialDuration,
-                    ),
-                    curve: m3.motion.effectsCurve,
-                    child: on
-                        ? Padding(
-                            padding: const EdgeInsets.only(left: 5),
-                            child: Text(
-                              tab.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.fade,
-                              softWrap: false,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: cs.onPrimaryContainer,
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
+                  child: m3.motion.reduced(context)
+                      ? (on
+                            ? Padding(
+                                padding: const EdgeInsets.only(left: 5),
+                                child: Text(
+                                  tab.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: cs.onPrimaryContainer,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink())
+                      : AnimatedSize(
+                          duration: m3.motion.defaultSpatialDuration,
+                          curve: m3.motion.effectsCurve,
+                          child: on
+                              ? Padding(
+                                  padding: const EdgeInsets.only(left: 5),
+                                  child: Text(
+                                    tab.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.fade,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: cs.onPrimaryContainer,
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
                 ),
               ],
             ),

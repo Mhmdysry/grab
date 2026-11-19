@@ -183,7 +183,7 @@ void main() {
       expect(find.text('Filled'), findsOneWidget);
       expect(find.text('Tonal'), findsOneWidget);
       expect(find.byType(ExpressiveWavyProgressBar), findsOneWidget);
-      expect(find.byType(ExpressiveLoadingIndicator), findsOneWidget);
+      expect(find.byType(ExpressiveLoadingIndicator), findsNWidgets(2));
       expect(find.byType(ExpressiveGroup), findsOneWidget);
     });
 

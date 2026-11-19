@@ -18,6 +18,7 @@ import '../features/library/audio_player_screen.dart';
 import '../core/widgets/pop_widgets.dart';
 import '../core/widgets/toasts.dart';
 import '../data/db/app_database.dart';
+import '../data/settings/app_settings.dart';
 import '../features/downloads/downloads_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
@@ -31,30 +32,51 @@ class GrabApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
+    final settings = ref.watch(settingsProvider);
+    final dynamicSeed = ref.watch(dynamicColorProvider).value;
+    Haptics.enabled = settings.hapticsEnabled;
+
     // AppScale sits above everything (toasts included) so the whole app scales together.
     return MediaQuery.fromView(
       view: View.of(context),
       child: AppScale(
+        fontScale: settings.fontScale,
         child: ToastificationWrapper(
           child: MaterialApp(
             title: 'Grab',
             debugShowCheckedModeBanner: false,
-            theme: popTheme(),
-            darkTheme: popTheme(brightness: Brightness.dark),
-            themeMode: themeMode,
-            // Status bar icons follow the theme: dark on light, light on dark.
-            // Yellow pages (welcome, About) set their own.
-            builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-              value: Theme.of(context).brightness == Brightness.dark
-                  ? SystemUiOverlayStyle.light.copyWith(
-                      statusBarColor: Colors.transparent,
-                    )
-                  : SystemUiOverlayStyle.dark.copyWith(
-                      statusBarColor: Colors.transparent,
-                    ),
-              child: child!,
+            theme: buildExpressiveTheme(
+              settings,
+              brightness: Brightness.light,
+              dynamicSeed: dynamicSeed,
             ),
+            darkTheme: buildExpressiveTheme(
+              settings,
+              brightness: Brightness.dark,
+              dynamicSeed: dynamicSeed,
+            ),
+            themeMode: settings.themeMode,
+            themeAnimationDuration: settings.motionPreset == M3MotionPreset.off
+                ? Duration.zero
+                : const Duration(milliseconds: 260),
+            themeAnimationCurve: Curves.easeOutCubic,
+            builder: (context, child) {
+              final theme = Theme.of(context);
+              syncToastScheme(theme.colorScheme);
+              final isDark = theme.brightness == Brightness.dark;
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: isDark
+                    ? SystemUiOverlayStyle.light.copyWith(
+                        statusBarColor: Colors.transparent,
+                        systemNavigationBarColor: Colors.transparent,
+                      )
+                    : SystemUiOverlayStyle.dark.copyWith(
+                        statusBarColor: Colors.transparent,
+                        systemNavigationBarColor: Colors.transparent,
+                      ),
+                child: child!,
+              );
+            },
             home: const _FirstRun(),
           ),
         ),
@@ -76,8 +98,9 @@ class _FirstRunState extends ConsumerState<_FirstRun> {
 
   @override
   Widget build(BuildContext context) {
+    final m3 = context.m3;
     return AnimatedSwitcher(
-      duration: Pop.medium,
+      duration: m3.motion.resolve(context, m3.motion.defaultEffectsDuration),
       child: _seen
           ? const _Shell()
           : WelcomeScreen(
@@ -258,13 +281,21 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
   void _onJobsChanged(List<DownloadJob>? before, List<DownloadJob> after) {
     if (before == null) return;
     final was = {for (final j in before) j.id: j.status};
+    final m3 = context.m3;
     for (final j in after) {
       final prev = was[j.id];
       if (prev == null || prev == j.status) continue;
       if (j.status == JobStatus.done) {
         Haptics.success();
-        if (!Pop.reduceMotion(context)) _confetti.play();
-        popToast('Saved', icon: Icons.check_circle_rounded, detail: j.title);
+        if (m3.confettiEnabled && !m3.motion.reduced(context)) {
+          _confetti.play();
+        }
+        popToast(
+          'Saved',
+          icon: Icons.check_circle_rounded,
+          detail: j.title,
+          context: context,
+        );
       } else if (j.status == JobStatus.failed) {
         Haptics.error();
         popToast(
@@ -272,6 +303,7 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
           icon: Icons.error_rounded,
           error: true,
           detail: j.title,
+          context: context,
         );
       }
     }
@@ -293,25 +325,29 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
       if (after != null) _onJobsChanged(prev?.value, after);
     });
     final active = ref.watch(activeCountProvider);
+    final m3 = context.m3;
+    final cs = context.cs;
+    final overlayBottom = switch (m3.navStyle) {
+      M3NavStyle.floatingPill => 92.0,
+      M3NavStyle.dockedBar => 84.0,
+      M3NavStyle.minimalDock => 84.0,
+    };
 
     return Stack(
       children: [
         Scaffold(
-          extendBody: true,
+          extendBody: m3.navStyle != M3NavStyle.dockedBar,
           body: ValueListenableBuilder(
             valueListenable: AudioPlayback.current,
             builder: (context, playing, child) =>
                 DockInset(extra: playing == null ? 0 : 64, child: child!),
             child: IndexedStack(
               index: _tab,
-              // Hidden tabs stay alive but stop animating, so the Home blobs
-              // (and anything else that ticks) cost nothing on other tabs.
               children: [
                 for (final (i, page) in <Widget>[
                   HomeScreen(
                     key: _home,
                     onQueued: () => setState(() => _tab = 1),
-                    // Any fetch, pasted, typed or offered, makes the offer moot.
                     onFetch: (link) {
                       _remember(link);
                       _dismissOffer();
@@ -339,22 +375,33 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
         Positioned(
           left: 16,
           right: 16,
-          bottom: MediaQuery.paddingOf(context).bottom + 92,
+          bottom: MediaQuery.paddingOf(context).bottom + overlayBottom,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               AnimatedSwitcher(
-                duration: Pop.medium,
-                switchInCurve: Curves.easeOutBack,
+                duration: m3.motion.resolve(
+                  context,
+                  m3.motion.defaultSpatialDuration,
+                ),
+                switchInCurve: Curves.linear,
                 switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (child, a) => FadeTransition(
-                  opacity: a,
+                  opacity: CurvedAnimation(
+                    parent: a,
+                    curve: m3.motion.effectsCurve,
+                  ),
                   child: SlideTransition(
                     position: Tween(
-                      begin: const Offset(0, 0.4),
+                      begin: const Offset(0, 0.35),
                       end: Offset.zero,
-                    ).animate(a),
+                    ).animate(
+                      CurvedAnimation(
+                        parent: a,
+                        curve: m3.motion.defaultSpatialCurve,
+                      ),
+                    ),
                     child: child,
                   ),
                 ),
@@ -383,11 +430,11 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
             minBlastForce: 10,
             gravity: 0.25,
             emissionFrequency: 0.0,
-            colors: const [
-              Pop.yellow,
-              Pop.ink,
-              Color(0xFF9FD8FF),
-              Color(0xFFFFB2C8),
+            colors: [
+              cs.primary,
+              cs.secondary,
+              cs.tertiary,
+              cs.primaryContainer,
             ],
           ),
         ),

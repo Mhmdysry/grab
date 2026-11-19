@@ -1,6 +1,7 @@
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 
+import '../../data/settings/app_settings.dart';
 import '../theme/pop_theme.dart';
 import '../utils/haptics.dart';
 
@@ -14,14 +15,14 @@ class Morph extends StatelessWidget {
     super.key,
     required this.builder,
     required this.page,
-    this.shape = const RoundedRectangleBorder(borderRadius: Pop.cardRadius),
+    this.shape,
     this.color,
     this.pageColor,
   });
 
   final Widget Function(BuildContext context, VoidCallback open) builder;
   final WidgetBuilder page;
-  final ShapeBorder shape;
+  final ShapeBorder? shape;
 
   /// Background of the closed widget; it fades into [pageColor] while growing.
   final Color? color;
@@ -31,22 +32,26 @@ class Morph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final still = Pop.reduceMotion(context);
+    final m3 = context.m3;
+    final still = m3.motion.reduced(context);
     final bg = Theme.of(context).scaffoldBackgroundColor;
+    final effectiveDuration = switch (m3.motion.preset) {
+      M3MotionPreset.snappy => const Duration(milliseconds: 240),
+      M3MotionPreset.off => Duration.zero,
+      M3MotionPreset.expressive || M3MotionPreset.standard => duration,
+    };
     return OpenContainer<void>(
-      // A single cross-fade is cheaper than fade-through and reads as one motion.
       transitionType: ContainerTransitionType.fade,
-      transitionDuration: still ? Duration.zero : duration,
+      transitionDuration: still ? Duration.zero : effectiveDuration,
       closedElevation: 0,
       openElevation: 0,
-      closedShape: shape,
+      closedShape:
+          shape ?? RoundedRectangleBorder(borderRadius: m3.cardRadius),
       closedColor: color ?? bg,
       openColor: pageColor ?? bg,
       middleColor: pageColor ?? bg,
       tappable: false,
       useRootNavigator: true,
-      // OpenContainer's Material doesn't pick up the theme's text colour, so
-      // titles went dark-on-dark in dark mode. Hand it the right one.
       closedBuilder: (context, open) => DefaultTextStyle.merge(
         style: TextStyle(color: context.pop.text),
         child: IconTheme.merge(
@@ -57,7 +62,6 @@ class Morph extends StatelessWidget {
           }),
         ),
       ),
-      // Its own layer, so the page is drawn once and then just moved and scaled.
       openBuilder: (context, _) => RepaintBoundary(child: page(context)),
     );
   }

@@ -142,16 +142,29 @@ class FormatSheet extends ConsumerWidget {
           const SizedBox(height: 18),
           if (s.mode != DownloadMode.subtitlesOnly) ...[
             PopSection(s.mode == DownloadMode.audioOnly ? 'Audio' : 'Quality'),
-            for (final (i, o) in s.options.indexed)
-              PopOptionTile(
-                    label: fmt(o.label),
-                    size: formatBytes(o.bytes),
-                    selected: i == s.optionIndex.clamp(0, s.options.length - 1),
-                    onTap: () => c.setOption(i),
-                  )
-                  .animate(target: still ? null : 1)
-                  .fadeIn(duration: Pop.medium, delay: (40 * i).ms)
-                  .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+            for (final (i, o) in s.options.indexed) ...[
+              if (still)
+                PopOptionTile(
+                  label: fmt(o.label),
+                  size: formatBytes(o.bytes),
+                  selected: i == s.optionIndex.clamp(0, s.options.length - 1),
+                  onTap: () => c.setOption(i),
+                )
+              else
+                PopOptionTile(
+                      label: fmt(o.label),
+                      size: formatBytes(o.bytes),
+                      selected:
+                          i == s.optionIndex.clamp(0, s.options.length - 1),
+                      onTap: () => c.setOption(i),
+                    )
+                    .animate()
+                    .fadeIn(
+                      duration: context.m3.motion.defaultEffectsDuration,
+                      delay: (35 * i).ms,
+                    )
+                    .slideY(begin: 0.12, end: 0, curve: Curves.easeOutCubic),
+            ],
           ],
 
           if (s.mode != DownloadMode.audioOnly) ..._subtitles(info, s, c),

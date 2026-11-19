@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/pop_theme.dart';
+import '../widgets/expressive_shapes.dart';
 import '../widgets/pop_widgets.dart';
 import 'haptics.dart';
 
@@ -99,14 +100,15 @@ Future<bool> _explain(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: const ShapeDecoration(
-                shape: CircleBorder(),
-                color: Pop.yellow,
+            ExpressiveShapeContainer(
+              polygon: ExpressivePolygon.cookie9,
+              size: 72,
+              color: context.cs.primaryContainer,
+              child: Icon(
+                icon,
+                size: 36,
+                color: context.cs.onPrimaryContainer,
               ),
-              child: Icon(icon, size: 36, color: Pop.ink),
             ),
             const SizedBox(height: 16),
             Text(

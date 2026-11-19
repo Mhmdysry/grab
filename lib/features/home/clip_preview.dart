@@ -8,6 +8,7 @@ import '../../core/utils/platform.dart';
 
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../data/engine/engine_channel.dart';
 import '../../data/engine/media_info.dart';
@@ -171,6 +172,8 @@ class _ClipPreviewState extends State<ClipPreview> {
   @override
   Widget build(BuildContext context) {
     final c = _c;
+    final cs = context.cs;
+    final m3 = context.m3;
     final playing = c?.value.isPlaying ?? false;
     final t = widget.trim;
     final pos = c == null
@@ -181,9 +184,9 @@ class _ClipPreviewState extends State<ClipPreview> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ClipRRect(
-          borderRadius: Pop.cardRadius,
+          borderRadius: m3.cardRadius,
           child: Container(
-            color: Pop.ink,
+            color: Colors.black,
             height: 210,
             child: Stack(
               alignment: Alignment.center,
@@ -207,20 +210,24 @@ class _ClipPreviewState extends State<ClipPreview> {
                 ),
                 if (_playable)
                   Material(
-                    color: playing ? Colors.black38 : Pop.yellow,
-                    shape: const CircleBorder(),
+                    color: playing ? Colors.black45 : cs.primaryContainer,
+                    shape: ExpressivePolygonBorder(
+                      polygon: playing
+                          ? ExpressivePolygon.squircle
+                          : ExpressivePolygon.cookie9,
+                    ),
                     child: InkWell(
                       customBorder: const CircleBorder(),
                       onTap: _togglePlay,
                       child: SizedBox(
-                        width: 60,
-                        height: 60,
+                        width: 62,
+                        height: 62,
                         child: _loading
-                            ? const Padding(
-                                padding: EdgeInsets.all(18),
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                  color: Pop.ink,
+                            ? Center(
+                                child: ExpressiveLoadingIndicator(
+                                  size: 26,
+                                  color: cs.onPrimaryContainer,
+                                  contained: false,
                                 ),
                               )
                             : Icon(
@@ -228,7 +235,9 @@ class _ClipPreviewState extends State<ClipPreview> {
                                     ? Icons.pause_rounded
                                     : Icons.play_arrow_rounded,
                                 size: 34,
-                                color: playing ? Colors.white : Pop.ink,
+                                color: playing
+                                    ? Colors.white
+                                    : cs.onPrimaryContainer,
                                 semanticLabel: playing
                                     ? 'Pause preview'
                                     : 'Play preview',
@@ -257,7 +266,7 @@ class _ClipPreviewState extends State<ClipPreview> {
           ),
         ),
         AnimatedSize(
-          duration: Pop.medium,
+          duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: t == null || _duration <= 0
@@ -308,7 +317,7 @@ class _Pill extends StatelessWidget {
   );
 }
 
-/// Filmstrip with a yellow selection frame: drag either handle to set the
+/// Filmstrip with a themed selection frame: drag either handle to set the
 /// start or end, tap anywhere to look at that moment.
 class TrimBar extends StatefulWidget {
   const TrimBar({
@@ -354,6 +363,7 @@ class _TrimBarState extends State<TrimBar> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
     final d = widget.duration;
     final len = widget.end - widget.start;
     return Column(
@@ -396,7 +406,6 @@ class _TrimBarState extends State<TrimBar> {
                 Haptics.selection();
               }
               final moved = _drag == _Handle.start ? s : e;
-              // Seeking on every pixel floods the player; a few times a second is plenty.
               if (_seekThrottle?.isActive ?? false) {
                 widget.onChanged(s, e, moved);
                 return;
@@ -422,7 +431,6 @@ class _TrimBarState extends State<TrimBar> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Filmstrip: the thumbnail repeated along the length.
                     Positioned.fill(
                       left: _handleW,
                       right: _handleW,
@@ -452,7 +460,6 @@ class _TrimBarState extends State<TrimBar> {
                         ),
                       ),
                     ),
-                    // Dim what gets cut away.
                     Positioned(
                       left: _handleW,
                       width: (sx - _handleW).clamp(0, track),
@@ -467,7 +474,6 @@ class _TrimBarState extends State<TrimBar> {
                       bottom: 0,
                       child: const ColoredBox(color: Color(0xB3000000)),
                     ),
-                    // Yellow frame around the kept part, with grips at both ends.
                     Positioned(
                       left: sx - _handleW,
                       width: ex - sx + _handleW * 2,
@@ -475,7 +481,11 @@ class _TrimBarState extends State<TrimBar> {
                       bottom: -3,
                       child: IgnorePointer(
                         child: CustomPaint(
-                          painter: _FramePainter(handle: _handleW),
+                          painter: _FramePainter(
+                            handle: _handleW,
+                            frameColor: cs.primary,
+                            gripColor: cs.onPrimary,
+                          ),
                         ),
                       ),
                     ),
@@ -507,23 +517,29 @@ class _TrimBarState extends State<TrimBar> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Drag the yellow ends to choose the part. Tap the strip to look at a moment.',
-          style: TextStyle(color: context.pop.muted, fontSize: 12),
+          'Drag the handles to choose the part. Tap the strip to look at a moment.',
+          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
   }
 }
 
-/// CapCut-style frame: thick yellow handles on the sides, thin top and bottom.
+/// CapCut-style frame: thick themed handles on the sides, thin top and bottom.
 class _FramePainter extends CustomPainter {
-  _FramePainter({required this.handle});
+  _FramePainter({
+    required this.handle,
+    required this.frameColor,
+    required this.gripColor,
+  });
 
   final double handle;
+  final Color frameColor;
+  final Color gripColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final yellow = Paint()..color = Pop.yellow;
+    final frame = Paint()..color = frameColor;
     final r = RRect.fromRectAndRadius(
       Offset.zero & size,
       const Radius.circular(10),
@@ -532,10 +548,9 @@ class _FramePainter extends CustomPainter {
       Rect.fromLTRB(handle, 3, size.width - handle, size.height - 3),
       const Radius.circular(4),
     );
-    canvas.drawDRRect(r, inner, yellow);
-    // Grip lines on each handle.
+    canvas.drawDRRect(r, inner, frame);
     final grip = Paint()
-      ..color = Pop.ink
+      ..color = gripColor
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round;
     for (final cx in [handle / 2, size.width - handle / 2]) {
@@ -548,5 +563,8 @@ class _FramePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.handle != handle;
+  bool shouldRepaint(_FramePainter old) =>
+      old.handle != handle ||
+      old.frameColor != frameColor ||
+      old.gripColor != gripColor;
 }

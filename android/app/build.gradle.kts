@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "app.grab.grab"
+        applicationId = "app.grab.grab.expressive"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

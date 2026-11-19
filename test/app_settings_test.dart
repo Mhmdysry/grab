@@ -12,6 +12,19 @@ void main() {
     expect(s.defaultMode, DownloadMode.video);
     expect(s.maxHeight, isNull);
     expect(s.maxParallel, 2);
+    expect(s.accentPalette, M3Palette.amber);
+    expect(s.useDynamicColor, isFalse);
+    expect(s.schemeStyle, M3SchemeStyle.expressive);
+    expect(s.amoledDark, isFalse);
+    expect(s.contrast, M3Contrast.standard);
+    expect(s.motionPreset, M3MotionPreset.expressive);
+    expect(s.shapeStyle, M3ShapeStyle.expressive);
+    expect(s.navStyle, M3NavStyle.floatingPill);
+    expect(s.density, M3Density.cozy);
+    expect(s.libraryColumns, 2);
+    expect(s.fontScale, 1.0);
+    expect(s.hapticsEnabled, isTrue);
+    expect(s.confettiEnabled, isTrue);
   });
 
   test('round-trips through storage', () async {
@@ -24,6 +37,19 @@ void main() {
       container: 'mkv',
       audioFormat: 'opus',
       maxParallel: 3,
+      accentPalette: M3Palette.violet,
+      useDynamicColor: true,
+      schemeStyle: M3SchemeStyle.vibrant,
+      amoledDark: true,
+      contrast: M3Contrast.high,
+      motionPreset: M3MotionPreset.snappy,
+      shapeStyle: M3ShapeStyle.crisp,
+      navStyle: M3NavStyle.minimalDock,
+      density: M3Density.compact,
+      libraryColumns: 3,
+      fontScale: 1.2,
+      hapticsEnabled: false,
+      confettiEnabled: false,
     ).save(p);
     final s = AppSettings.load(p);
     expect(s.themeMode, ThemeMode.dark);
@@ -32,6 +58,19 @@ void main() {
     expect(s.container, 'mkv');
     expect(s.audioFormat, 'opus');
     expect(s.maxParallel, 3);
+    expect(s.accentPalette, M3Palette.violet);
+    expect(s.useDynamicColor, isTrue);
+    expect(s.schemeStyle, M3SchemeStyle.vibrant);
+    expect(s.amoledDark, isTrue);
+    expect(s.contrast, M3Contrast.high);
+    expect(s.motionPreset, M3MotionPreset.snappy);
+    expect(s.shapeStyle, M3ShapeStyle.crisp);
+    expect(s.navStyle, M3NavStyle.minimalDock);
+    expect(s.density, M3Density.compact);
+    expect(s.libraryColumns, 3);
+    expect(s.fontScale, 1.2);
+    expect(s.hapticsEnabled, isFalse);
+    expect(s.confettiEnabled, isFalse);
   });
 
   test('ignores bad stored values', () async {
@@ -40,12 +79,54 @@ void main() {
       'container': 'avi',
       'maxHeight': 999,
       'maxParallel': 40,
+      'accentPalette': 'neon_invalid',
+      'schemeStyle': 'unknown',
+      'contrast': 'ultra',
+      'motionPreset': 'turbo',
+      'shapeStyle': 'triangle',
+      'navStyle': 'drawer',
+      'density': 'mega',
+      'libraryColumns': 9,
+      'fontScale': 3.5,
     });
     final s = AppSettings.load(await SharedPreferences.getInstance());
     expect(s.defaultMode, DownloadMode.video);
     expect(s.container, 'mp4');
     expect(s.maxHeight, isNull);
     expect(s.maxParallel, 3);
+    expect(s.accentPalette, M3Palette.amber);
+    expect(s.schemeStyle, M3SchemeStyle.expressive);
+    expect(s.contrast, M3Contrast.standard);
+    expect(s.motionPreset, M3MotionPreset.expressive);
+    expect(s.shapeStyle, M3ShapeStyle.expressive);
+    expect(s.navStyle, M3NavStyle.floatingPill);
+    expect(s.density, M3Density.cozy);
+    expect(s.libraryColumns, 2);
+    expect(s.fontScale, 1.0);
+  });
+
+  test('resetAppearance resets only visual fields', () {
+    const custom = AppSettings(
+      container: 'mkv',
+      maxParallel: 3,
+      accentPalette: M3Palette.emerald,
+      amoledDark: true,
+      navStyle: M3NavStyle.dockedBar,
+      motionPreset: M3MotionPreset.off,
+      libraryColumns: 3,
+      fontScale: 1.2,
+      hapticsEnabled: false,
+    );
+    final reset = custom.resetAppearance();
+    expect(reset.container, 'mkv');
+    expect(reset.maxParallel, 3);
+    expect(reset.accentPalette, M3Palette.amber);
+    expect(reset.amoledDark, isFalse);
+    expect(reset.navStyle, M3NavStyle.floatingPill);
+    expect(reset.motionPreset, M3MotionPreset.expressive);
+    expect(reset.libraryColumns, 2);
+    expect(reset.fontScale, 1.0);
+    expect(reset.hapticsEnabled, isTrue);
   });
 
   test('picks the closest quality without going over', () {

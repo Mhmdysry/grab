@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart' show Color;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -121,3 +125,16 @@ class PendingLink extends Notifier<String?> {
 final pendingLinkProvider = NotifierProvider<PendingLink, String?>(
   PendingLink.new,
 );
+
+/// Extracts Android 12+ wallpaper Dynamic Color accent (system_accent1_500).
+/// Returns null on older Android versions, iOS, desktop, or tests.
+final dynamicColorProvider = FutureProvider<Color?>((ref) async {
+  if (!Platform.isAndroid) return null;
+  try {
+    const channel = MethodChannel('grab/app');
+    final argb = await channel.invokeMethod<int>('dynamicColor');
+    return argb != null ? Color(argb & 0xFFFFFFFF) : null;
+  } catch (_) {
+    return null;
+  }
+});

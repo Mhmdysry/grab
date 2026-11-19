@@ -11,6 +11,7 @@ import '../../core/theme/pop_theme.dart';
 import '../../core/utils/permissions.dart';
 import '../../core/utils/platform.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
 import '../../data/db/app_database.dart';
@@ -19,6 +20,7 @@ import '../../data/settings/app_settings.dart';
 import '../library/library_items.dart';
 import '../library/library_screen.dart';
 import 'about_screen.dart';
+import 'appearance_screen.dart';
 
 final _outputDirProvider = FutureProvider<String?>(
   (ref) => ref.watch(engineProvider).outputDir(),
@@ -231,7 +233,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            const PopSection('Appearance'),
+            const PopSection('Appearance & Customization'),
+            _AppearanceHeroCard(
+              settings: s,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AppearanceScreen()),
+              ),
+            ),
+            const SizedBox(height: 10),
             PopSegmented<ThemeMode>(
               values: const [ThemeMode.system, ThemeMode.light, ThemeMode.dark],
               labels: const ['System', 'Light', 'Dark'],
@@ -549,35 +558,89 @@ class _TemplateSheetState extends State<_TemplateSheet> {
   }
 }
 
+class _AppearanceHeroCard extends StatelessWidget {
+  const _AppearanceHeroCard({required this.settings, required this.onTap});
+
+  final AppSettings settings;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final subtitle = [
+      settings.useDynamicColor ? 'Dynamic' : settings.accentPalette.label,
+      settings.schemeStyle.label,
+      settings.navStyle.label,
+      settings.motionPreset.label,
+    ].join(' · ');
+
+    return Material(
+      color: cs.primaryContainer,
+      borderRadius: m3.cardRadius,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              ExpressiveShapeContainer(
+                polygon: ExpressivePolygon.cookie9,
+                size: 50,
+                color: cs.primary,
+                child: Icon(
+                  Icons.palette_rounded,
+                  color: cs.onPrimary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Appearance Studio',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onPrimaryContainer.withValues(alpha: 0.78),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: cs.onPrimaryContainer,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Group extends StatelessWidget {
   const _Group({required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.pop.card,
-        borderRadius: Pop.cardRadius,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (final (i, c) in children.indexed) ...[
-            if (i > 0)
-              Divider(
-                height: 1,
-                indent: 16,
-                endIndent: 16,
-                color: context.pop.track,
-              ),
-            c,
-          ],
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ExpressiveGroup(children: children);
 }
 
 class _Row extends StatelessWidget {
@@ -589,12 +652,17 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m3 = context.m3;
+    final cs = context.cs;
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
+        constraints: const BoxConstraints(minHeight: 54),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: m3.rowVerticalPad - 2,
+          ),
           child: Row(
             children: [
               Text(
@@ -611,12 +679,12 @@ class _Row extends StatelessWidget {
                   textAlign: TextAlign.end,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.pop.muted, fontSize: 15),
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15),
                 ),
               ),
               if (onTap != null) ...[
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right_rounded, color: context.pop.muted),
+                Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
               ],
             ],
           ),
@@ -632,6 +700,7 @@ class _StorageGroup extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cs = context.cs;
     final items = ref.watch(libraryProvider);
     final jobs = ref.watch(jobsProvider).value ?? const <DownloadJob>[];
     final failed = jobs
@@ -650,16 +719,16 @@ class _StorageGroup extends ConsumerWidget {
       byKind[i.kind] = (byKind[i.kind] ?? 0) + size;
     }
     final total = byKind.values.fold(0, (a, b) => a + b);
-    const kinds = [
-      (LibraryKind.video, 'Video', Pop.ink),
-      (LibraryKind.audio, 'Audio', Color(0xFFE0A800)),
-      (LibraryKind.subtitles, 'Subtitles', Color(0xFF9FD8FF)),
+    final kinds = [
+      (LibraryKind.video, 'Video', cs.primary),
+      (LibraryKind.audio, 'Audio', cs.tertiary),
+      (LibraryKind.subtitles, 'Subtitles', cs.secondary),
     ];
 
     return _Group(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -672,12 +741,12 @@ class _StorageGroup extends ConsumerWidget {
               ),
               Text(
                 '${items.length} ${items.length == 1 ? 'file' : 'files'} in ${ref.watch(settingsProvider).savePath}',
-                style: TextStyle(color: context.pop.muted),
+                style: TextStyle(color: cs.onSurfaceVariant),
               ),
               if (total > 0) ...[
                 const SizedBox(height: 12),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(999),
                   child: SizedBox(
                     height: 12,
                     child: Row(
@@ -689,14 +758,7 @@ class _StorageGroup extends ConsumerWidget {
                                 8,
                                 1000,
                               ),
-                              child: ColoredBox(
-                                color:
-                                    Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        color == Pop.ink
-                                    ? Pop.yellow
-                                    : color,
-                              ),
+                              child: ColoredBox(color: color),
                             ),
                       ],
                     ),
@@ -717,12 +779,7 @@ class _StorageGroup extends ConsumerWidget {
                               height: 10,
                               decoration: ShapeDecoration(
                                 shape: const CircleBorder(),
-                                color:
-                                    Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        color == Pop.ink
-                                    ? Pop.yellow
-                                    : color,
+                                color: color,
                               ),
                             ),
                             const SizedBox(width: 6),

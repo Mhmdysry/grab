@@ -12,8 +12,9 @@ import 'package:flutter/widgets.dart';
 /// Text never ends up smaller than the user's font size setting asks for, and
 /// never smaller than 1x.
 class AppScale extends StatelessWidget {
-  const AppScale({super.key, required this.child});
+  const AppScale({super.key, this.fontScale = 1.0, required this.child});
 
+  final double fontScale;
   final Widget child;
 
   /// Width the screens are designed for. On a ~590 dp phone (small Display
@@ -34,10 +35,14 @@ class AppScale extends StatelessWidget {
     final mq = MediaQuery.of(context);
     final s = factorFor(mq.size);
     // Below 1x the user shrank text system-wide; inside Grab we already size things
-    // to the screen, so keep at least 1x. Larger accessibility sizes still apply.
-    final text = mq.textScaler.scale(1) < 1
+    // to the screen, so keep at least 1x. Larger accessibility sizes still apply,
+    // multiplied by the user's in-app Appearance fontScale preference.
+    final baseText = mq.textScaler.scale(1) < 1
         ? TextScaler.noScaling
         : mq.textScaler;
+    final text = (fontScale - 1.0).abs() < 0.001
+        ? baseText
+        : TextScaler.linear((baseText.scale(1.0) * fontScale).clamp(0.85, 2.2));
     // Always build the same tree (even at 1x) so rotating never rebuilds app state.
     final logical = mq.size / s;
     return MediaQuery(

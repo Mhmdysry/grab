@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
 import '../../data/engine/media_info.dart';
@@ -95,6 +96,7 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
     final d = _duration;
     final len = _range.end - _range.start;
     return SafeArea(
@@ -115,11 +117,11 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: context.pop.muted),
+              style: TextStyle(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
             if (d == null && _error == null)
-              const Center(child: CircularProgressIndicator())
+              const Center(child: ExpressiveLoadingIndicator())
             else if (d != null) ...[
               Row(
                 children: [
@@ -128,7 +130,11 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const Spacer(),
-                  PopTag('${len.round()} s'),
+                  PopTag(
+                    '${len.round()} s',
+                    color: cs.primaryContainer,
+                    foreground: cs.onPrimaryContainer,
+                  ),
                   const Spacer(),
                   Text(
                     clockLabel(_range.end),
@@ -144,7 +150,6 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
                 onChanged: _saved != null
                     ? null
                     : (v) {
-                        // 1 to 40 seconds; moving one handle past the limit drags the other.
                         var s = v.start, e = v.end;
                         if (e - s > maxRingtoneSeconds) {
                           if (s != _range.start) {
@@ -163,12 +168,12 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
               ),
               Text(
                 'Up to ${maxRingtoneSeconds.round()} seconds. It fades in and out so it never starts with a jolt.',
-                style: TextStyle(color: context.pop.muted, fontSize: 12),
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
               ),
             ],
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text('$_error', style: const TextStyle(color: Pop.error)),
+              Text('$_error', style: TextStyle(color: cs.error)),
             ],
             const SizedBox(height: 20),
             if (_saved == null)
@@ -181,12 +186,12 @@ class _RingtoneSheetState extends State<_RingtoneSheet> {
             else ...[
               Row(
                 children: [
-                  const Icon(Icons.check_circle_rounded),
+                  Icon(Icons.check_circle_rounded, color: cs.primary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Saved to Ringtones/Grab. It now shows up in your phone\'s ringtone list.',
-                      style: TextStyle(color: context.pop.muted),
+                      style: TextStyle(color: cs.onSurfaceVariant),
                     ),
                   ),
                 ],

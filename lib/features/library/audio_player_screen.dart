@@ -9,8 +9,8 @@ import '../../core/widgets/pop_widgets.dart';
 import '../../data/engine/media_info.dart';
 import 'library_items.dart';
 
-/// Full-screen audio player. Playback lives in [AudioPlayback], so leaving this
-/// screen (or the app) keeps the music going.
+/// Full-screen Material 3 Expressive audio player with circle ↔ squircle
+/// play/pause morphing. Playback lives in [AudioPlayback].
 class AudioPlayerScreen extends StatefulWidget {
   const AudioPlayerScreen({super.key, required this.item});
 
@@ -43,8 +43,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     return Scaffold(
-      backgroundColor: Pop.ink,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -52,14 +54,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               children: [
                 IconButton(
                   tooltip: 'Close player, keep playing',
-                  color: Colors.white,
+                  color: cs.onSurface,
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
                 ),
                 const Spacer(),
                 IconButton(
                   tooltip: 'Stop',
-                  color: Colors.white70,
+                  color: cs.onSurfaceVariant,
                   onPressed: () {
                     AudioPlayback.stop();
                     Navigator.pop(context);
@@ -79,7 +81,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                       url: widget.item.thumbnail,
                       audio: true,
                       size: double.infinity,
-                      radius: Pop.cardRadius,
+                      radius: m3.cardRadius,
                     ),
                   ),
                 ),
@@ -94,8 +96,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                     widget.item.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontWeight: FontWeight.w800,
                       fontSize: 22,
                       height: 1.15,
@@ -107,7 +109,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                         ? "Can't play this file."
                         : widget.item.site ?? widget.item.ext,
                     style: TextStyle(
-                      color: _error != null ? Pop.error : Colors.white60,
+                      color: _error != null ? cs.error : cs.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -126,10 +128,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                     children: [
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: Pop.yellow,
-                          inactiveTrackColor: Colors.white24,
-                          thumbColor: Pop.yellow,
-                          overlayColor: Pop.yellow.withValues(alpha: 0.2),
+                          activeTrackColor: cs.primary,
+                          inactiveTrackColor: cs.surfaceContainerHighest,
+                          thumbColor: cs.primary,
+                          overlayColor: cs.primary.withValues(alpha: 0.16),
                         ),
                         child: Slider(
                           value: ms == 0 ? 0 : pos.inMilliseconds / ms,
@@ -145,16 +147,16 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                           children: [
                             Text(
                               _t(pos),
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
                             const Spacer(),
                             Text(
                               _t(total),
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -166,54 +168,67 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 );
               },
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             StreamBuilder<PlayerState>(
               stream: _p.playerStateStream,
               builder: (context, snap) {
                 final playing = snap.data?.playing ?? false;
                 final done =
                     snap.data?.processingState == ProcessingState.completed;
+                final isPlaying = playing && !done;
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    IconButton(
+                    PopIconButton(
                       tooltip: 'Back 10 seconds',
-                      color: Colors.white,
-                      iconSize: 32,
+                      size: 52,
+                      icon: Icons.replay_10_rounded,
                       onPressed: () => _seekBy(-10),
-                      icon: const Icon(Icons.replay_10_rounded),
                     ),
                     const SizedBox(width: 20),
-                    IconButton(
-                      tooltip: playing && !done ? 'Pause' : 'Play',
-                      onPressed: () {
-                        Haptics.selection();
-                        if (done) {
-                          _p.seek(Duration.zero);
-                          _p.play();
-                        } else {
-                          AudioPlayback.toggle();
-                        }
-                      },
-                      style: IconButton.styleFrom(
-                        backgroundColor: Pop.yellow,
-                        foregroundColor: Pop.ink,
-                        fixedSize: const Size(76, 76),
-                      ),
-                      icon: Icon(
-                        playing && !done
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 40,
+                    Tooltip(
+                      message: isPlaying ? 'Pause' : 'Play',
+                      child: GestureDetector(
+                        onTap: () {
+                          Haptics.selection();
+                          if (done) {
+                            _p.seek(Duration.zero);
+                            _p.play();
+                          } else {
+                            AudioPlayback.toggle();
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: m3.motion.resolve(
+                            context,
+                            m3.motion.defaultSpatialDuration,
+                          ),
+                          curve: m3.motion.defaultSpatialCurve,
+                          width: isPlaying ? 84 : 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(
+                              isPlaying ? 22 : 38,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 40,
+                            color: cs.onPrimary,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 20),
-                    IconButton(
+                    PopIconButton(
                       tooltip: 'Forward 10 seconds',
-                      color: Colors.white,
-                      iconSize: 32,
+                      size: 52,
+                      icon: Icons.forward_10_rounded,
                       onPressed: () => _seekBy(10),
-                      icon: const Icon(Icons.forward_10_rounded),
                     ),
                   ],
                 );
@@ -229,26 +244,28 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   static String _t(Duration d) => clockLabel(d.inMilliseconds / 1000);
 }
 
-/// Small "now playing" bar shown above the dock while audio is loaded.
+/// Tonal M3 Expressive "now playing" bar shown above the dock while audio is loaded.
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     return ValueListenableBuilder<LibraryItem?>(
       valueListenable: AudioPlayback.current,
       builder: (context, item, _) {
         if (item == null) return const SizedBox.shrink();
         return Morph(
           shape: const StadiumBorder(),
-          color: Pop.ink,
-          pageColor: Pop.ink,
+          color: cs.inverseSurface,
+          pageColor: cs.surface,
           page: (_) => AudioPlayerScreen(item: item),
           builder: (context, open) => InkWell(
             customBorder: const StadiumBorder(),
             onTap: open,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+              padding: const EdgeInsets.all(6),
               child: Row(
                 children: [
                   PopThumb(
@@ -264,8 +281,8 @@ class MiniPlayer extends StatelessWidget {
                       item.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: cs.onInverseSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -274,27 +291,39 @@ class MiniPlayer extends StatelessWidget {
                     stream: AudioPlayback.player.playingStream,
                     builder: (context, snap) {
                       final playing = snap.data ?? false;
-                      return IconButton(
-                        tooltip: playing ? 'Pause' : 'Play',
-                        onPressed: () {
+                      return GestureDetector(
+                        onTap: () {
                           Haptics.selection();
                           AudioPlayback.toggle();
                         },
-                        style: IconButton.styleFrom(
-                          backgroundColor: Pop.yellow,
-                          foregroundColor: Pop.ink,
-                        ),
-                        icon: Icon(
-                          playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                        child: AnimatedContainer(
+                          duration: m3.motion.resolve(
+                            context,
+                            m3.motion.fastSpatialDuration,
+                          ),
+                          curve: m3.motion.fastSpatialCurve,
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(
+                              playing ? 12 : 20,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            playing
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: cs.onPrimaryContainer,
+                          ),
                         ),
                       );
                     },
                   ),
                   IconButton(
                     tooltip: 'Stop',
-                    color: Colors.white60,
+                    color: cs.onInverseSurface.withValues(alpha: 0.7),
                     onPressed: AudioPlayback.stop,
                     icon: const Icon(Icons.close_rounded),
                   ),

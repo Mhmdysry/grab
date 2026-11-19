@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/utils/platform.dart';
 
 import '../../core/theme/pop_theme.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import 'audio_player_screen.dart';
 import 'library_items.dart';
@@ -36,10 +37,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final VideoPlayerController _c = VideoPlayerController.file(
     File(widget.item.path),
-    // A real Android view: the texture path shows no picture on some phones.
     viewType: videoViewType,
-    // Play even while a call or other app holds the audio; otherwise Android
-    // silently holds playback back and the preview just sits there.
     videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
   );
   Object? _error;
@@ -90,6 +88,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final v = _c.value;
+    final cs = context.cs;
+    final m3 = context.m3;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -113,7 +113,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         )
                       : !v.isInitialized
-                      ? const CircularProgressIndicator(color: Pop.yellow)
+                      ? ExpressiveLoadingIndicator(
+                          color: cs.primary,
+                          containerColor: cs.primaryContainer,
+                        )
                       : _audio
                       ? Padding(
                           padding: const EdgeInsets.all(40),
@@ -123,7 +126,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               seed: widget.item.jobId,
                               url: widget.item.thumbnail,
                               size: double.infinity,
-                              radius: Pop.cardRadius,
+                              radius: m3.cardRadius,
                             ),
                           ),
                         )
@@ -136,7 +139,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
             AnimatedOpacity(
               opacity: _controlsVisible || _audio ? 1 : 0,
-              duration: Pop.medium,
+              duration: m3.motion.resolve(
+                context,
+                m3.motion.defaultEffectsDuration,
+              ),
               child: IgnorePointer(
                 ignoring: !(_controlsVisible || _audio),
                 child: Column(
@@ -177,23 +183,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _controls(VideoPlayerValue v) {
+    final cs = context.cs;
+    final m3 = context.m3;
     final total = v.duration.inMilliseconds;
     final pos = v.position.inMilliseconds.clamp(0, total);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: const BoxDecoration(
-        color: Color(0xCC141414),
-        borderRadius: Pop.cardRadius,
+      decoration: BoxDecoration(
+        color: const Color(0xCC141414),
+        borderRadius: m3.cardRadius,
       ),
       child: Column(
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: Pop.yellow,
+              activeTrackColor: cs.primary,
               inactiveTrackColor: Colors.white24,
-              thumbColor: Pop.yellow,
-              overlayColor: Pop.yellow.withValues(alpha: 0.2),
+              thumbColor: cs.primary,
+              overlayColor: cs.primary.withValues(alpha: 0.2),
             ),
             child: Slider(
               value: total == 0 ? 0 : pos / total,
@@ -218,17 +226,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: const Icon(Icons.replay_10_rounded),
               ),
               const SizedBox(width: 8),
-              IconButton(
-                tooltip: v.isPlaying ? 'Pause' : 'Play',
-                onPressed: _toggle,
-                style: IconButton.styleFrom(
-                  backgroundColor: Pop.yellow,
-                  foregroundColor: Pop.ink,
-                  fixedSize: const Size(60, 60),
-                ),
-                icon: Icon(
-                  v.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  size: 32,
+              Tooltip(
+                message: v.isPlaying ? 'Pause' : 'Play',
+                child: GestureDetector(
+                  onTap: _toggle,
+                  child: AnimatedContainer(
+                    duration: m3.motion.resolve(
+                      context,
+                      m3.motion.defaultSpatialDuration,
+                    ),
+                    curve: m3.motion.defaultSpatialCurve,
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      borderRadius: BorderRadius.circular(
+                        v.isPlaying ? 18 : 30,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      v.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: 32,
+                      color: cs.onPrimary,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

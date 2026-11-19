@@ -115,15 +115,18 @@ class _AboutScreenState extends State<AboutScreen> {
   @override
   Widget build(BuildContext context) {
     final app = _app;
-    final still = Pop.reduceMotion(context);
+    final cs = context.cs;
+    final m3 = context.m3;
+    final still = m3.motion.reduced(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Container(
-                color: Pop.yellow,
+                color: cs.primaryContainer,
                 child: SafeArea(
                   bottom: false,
                   child: Stack(
@@ -135,7 +138,7 @@ class _AboutScreenState extends State<AboutScreen> {
                           children: [
                             IconButton(
                               tooltip: 'Back',
-                              color: Pop.ink,
+                              color: cs.onPrimaryContainer,
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.arrow_back_rounded),
                             ),
@@ -145,47 +148,60 @@ class _AboutScreenState extends State<AboutScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  ClipRRect(
-                                        borderRadius: BorderRadius.circular(26),
-                                        child: Image.asset(
-                                          'assets/brand/icon.png',
-                                          width: 96,
-                                          height: 96,
-                                          semanticLabel: 'Grab icon',
-                                        ),
-                                      )
-                                      .animate(target: still ? null : 1)
-                                      .scaleXY(
-                                        begin: 0.8,
-                                        end: 1,
-                                        curve: Curves.easeOutBack,
-                                        duration: 500.ms,
+                                  if (still)
+                                    ClipRRect(
+                                      borderRadius: m3.cardRadius,
+                                      child: Image.asset(
+                                        'assets/brand/icon.png',
+                                        width: 96,
+                                        height: 96,
+                                        semanticLabel: 'Grab icon',
                                       ),
+                                    )
+                                  else
+                                    ClipRRect(
+                                          borderRadius: m3.cardRadius,
+                                          child: Image.asset(
+                                            'assets/brand/icon.png',
+                                            width: 96,
+                                            height: 96,
+                                            semanticLabel: 'Grab icon',
+                                          ),
+                                        )
+                                        .animate()
+                                        .scaleXY(
+                                          begin: 0.85,
+                                          end: 1,
+                                          curve: m3.motion.defaultSpatialCurve,
+                                          duration: 500.ms,
+                                        ),
                                   const SizedBox(height: 18),
-                                  const Text(
+                                  Text(
                                     'Grab',
                                     style: TextStyle(
-                                      color: Pop.ink,
+                                      color: cs.onPrimaryContainer,
                                       fontSize: 44,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: -1,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -1.2,
                                       height: 1,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
-                                  const Text(
+                                  Text(
                                     'Paste a link. Get the file.',
                                     style: TextStyle(
-                                      color: Pop.ink,
+                                      color: cs.onPrimaryContainer.withValues(
+                                        alpha: 0.85,
+                                      ),
                                       fontSize: 17,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                   const SizedBox(height: 14),
                                   DecoratedBox(
-                                    decoration: const ShapeDecoration(
-                                      shape: StadiumBorder(),
-                                      color: Pop.ink,
+                                    decoration: ShapeDecoration(
+                                      shape: const StadiumBorder(),
+                                      color: cs.primary,
                                     ),
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(
@@ -196,8 +212,8 @@ class _AboutScreenState extends State<AboutScreen> {
                                         app == null
                                             ? '…'
                                             : 'Version ${app.version} · build ${app.buildNumber}',
-                                        style: const TextStyle(
-                                          color: Pop.yellow,
+                                        style: TextStyle(
+                                          color: cs.onPrimary,
                                           fontWeight: FontWeight.w700,
                                           fontSize: 13,
                                         ),
@@ -355,27 +371,34 @@ class _AboutScreenState extends State<AboutScreen> {
       ),
       _Stage.error => (Icons.wifi_off_rounded, 'Something went wrong', _error),
     };
+    final cs = context.cs;
+    final m3 = context.m3;
     final highlight = _stage == _Stage.available || _stage == _Stage.ready;
     return AnimatedContainer(
-      duration: Pop.medium,
-      padding: const EdgeInsets.all(18),
+      duration: m3.motion.resolve(context, m3.motion.defaultEffectsDuration),
+      padding: EdgeInsets.all(m3.cardPad),
       decoration: BoxDecoration(
-        color: highlight ? context.pop.soft : context.pop.card,
-        borderRadius: Pop.cardRadius,
+        color: highlight ? cs.primaryContainer : cs.surfaceContainerLow,
+        borderRadius: m3.cardRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 28),
+              Icon(
+                icon,
+                size: 28,
+                color: highlight ? cs.onPrimaryContainer : cs.primary,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
+                    color: highlight ? cs.onPrimaryContainer : cs.onSurface,
                   ),
                 ),
               ),
@@ -383,7 +406,14 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           if (body != null) ...[
             const SizedBox(height: 6),
-            Text(body, style: TextStyle(color: context.pop.muted)),
+            Text(
+              body,
+              style: TextStyle(
+                color: highlight
+                    ? cs.onPrimaryContainer.withValues(alpha: 0.8)
+                    : cs.onSurfaceVariant,
+              ),
+            ),
           ],
           if (_stage == _Stage.available && r!.notes.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -391,8 +421,8 @@ class _AboutScreenState extends State<AboutScreen> {
               constraints: const BoxConstraints(maxHeight: 180),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: context.pop.bg,
-                borderRadius: Pop.thumbRadius,
+                color: cs.surfaceContainerLowest,
+                borderRadius: m3.thumbRadius,
               ),
               child: SingleChildScrollView(
                 child: Text(
@@ -404,7 +434,13 @@ class _AboutScreenState extends State<AboutScreen> {
           ],
           if (_stage == _Stage.downloading) ...[
             const SizedBox(height: 14),
-            PopProgressBar(value: _progress, track: context.pop.track),
+            PopProgressBar(
+              value: _progress,
+              wavy: true,
+              active: true,
+              color: cs.primary,
+              track: cs.surfaceContainerHighest,
+            ),
           ],
           const SizedBox(height: 16),
           switch (_stage) {
@@ -438,7 +474,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 }
 
-/// A card of tappable links in the Pop style.
+/// A segmented M3 Expressive group of tappable links.
 class _Links extends StatelessWidget {
   const _Links({required this.items, this.extra});
 
@@ -447,31 +483,23 @@ class _Links extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: context.pop.card,
-        borderRadius: Pop.cardRadius,
-      ),
-      child: Column(
-        children: [
-          for (final (icon, title, sub, url) in items)
-            ListTile(
-              leading: Icon(icon),
-              title: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(sub),
-              trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-              onTap: () {
-                Haptics.selection();
-                openUrl(url);
-              },
+    final cs = context.cs;
+    return ExpressiveGroup(
+      children: [
+        for (final (icon, title, sub, url) in items)
+          ExpressiveListRow(
+            title: title,
+            subtitle: sub,
+            leading: Icon(icon, color: cs.primary),
+            trailing: Icon(
+              Icons.open_in_new_rounded,
+              size: 18,
+              color: cs.onSurfaceVariant,
             ),
-          ?extra,
-        ],
-      ),
+            onTap: () => openUrl(url),
+          ),
+        ?extra,
+      ],
     );
   }
 }
@@ -489,16 +517,18 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(m3.cardPad),
       decoration: BoxDecoration(
-        color: context.pop.card,
-        borderRadius: Pop.cardRadius,
+        color: cs.surfaceContainerLow,
+        borderRadius: m3.cardRadius,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 28),
+          Icon(icon, size: 28, color: cs.primary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -512,7 +542,7 @@ class _InfoCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(body, style: TextStyle(color: context.pop.muted)),
+                Text(body, style: TextStyle(color: cs.onSurfaceVariant)),
               ],
             ),
           ),

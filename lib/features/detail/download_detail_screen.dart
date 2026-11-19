@@ -11,6 +11,7 @@ import '../../core/utils/platform.dart';
 import '../../app/providers.dart';
 import '../../core/audio/audio_playback.dart';
 import '../../core/theme/pop_theme.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
 import '../../data/db/app_database.dart';
@@ -60,6 +61,8 @@ class DownloadDetailScreen extends ConsumerWidget {
     final mode = DownloadMode.values
         .where((m) => m.name == job.mode)
         .firstOrNull;
+    final m3 = context.m3;
+    final cs = context.cs;
 
     return Scaffold(
       appBar: AppBar(
@@ -96,7 +99,7 @@ class DownloadDetailScreen extends ConsumerWidget {
                 seed: job.id,
                 url: job.thumbnail,
                 size: double.infinity,
-                radius: Pop.cardRadius,
+                radius: m3.cardRadius,
               ),
             ),
           const SizedBox(height: 16),
@@ -115,7 +118,7 @@ class DownloadDetailScreen extends ConsumerWidget {
               if (mode != null) _modeLabel(mode),
               if (job.finishedAt != null) _date(job.finishedAt!),
             ].whereType<String>().join(' · '),
-            style: TextStyle(color: context.pop.muted),
+            style: TextStyle(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
           Row(
@@ -165,9 +168,14 @@ class DownloadDetailScreen extends ConsumerWidget {
           if (files.isEmpty)
             Text(
               'No files recorded for this download.',
-              style: TextStyle(color: context.pop.muted),
+              style: TextStyle(color: cs.onSurfaceVariant),
+            )
+          else
+            ExpressiveGroup(
+              children: [
+                for (final f in files) _FileRow(path: f, job: job),
+              ],
             ),
-          for (final f in files) _FileRow(path: f, job: job),
         ],
       ),
     );
@@ -268,12 +276,14 @@ class _PreviewState extends State<_Preview> {
   @override
   Widget build(BuildContext context) {
     final v = _c.value;
+    final cs = context.cs;
+    final m3 = context.m3;
     final ready = v.isInitialized && !_failed;
     final ratio = ready && !_audio && v.aspectRatio > 0
         ? v.aspectRatio.clamp(0.5, 2.0)
         : 16 / 9;
     return ClipRRect(
-      borderRadius: Pop.cardRadius,
+      borderRadius: m3.cardRadius,
       child: AspectRatio(
         aspectRatio: ratio,
         child: Stack(
@@ -310,20 +320,20 @@ class _PreviewState extends State<_Preview> {
                 child: Center(
                   child: AnimatedOpacity(
                     opacity: v.isPlaying ? 0 : 1,
-                    duration: Pop.fast,
-                    child: Container(
-                      width: 68,
-                      height: 68,
-                      decoration: const ShapeDecoration(
-                        shape: CircleBorder(),
-                        color: Pop.yellow,
-                      ),
+                    duration: m3.motion.resolve(
+                      context,
+                      m3.motion.fastEffectsDuration,
+                    ),
+                    child: ExpressiveShapeContainer(
+                      polygon: ExpressivePolygon.cookie9,
+                      size: 72,
+                      color: cs.primaryContainer,
                       child: Icon(
                         _failed
                             ? Icons.error_outline_rounded
                             : Icons.play_arrow_rounded,
                         size: 38,
-                        color: Pop.ink,
+                        color: cs.onPrimaryContainer,
                         semanticLabel: v.isPlaying ? 'Pause' : 'Play',
                       ),
                     ),
@@ -341,7 +351,7 @@ class _PreviewState extends State<_Preview> {
                   value: v.duration.inMilliseconds == 0
                       ? 0
                       : v.position.inMilliseconds / v.duration.inMilliseconds,
-                  color: Pop.yellow,
+                  color: cs.primary,
                   backgroundColor: Colors.white24,
                 ),
               ),
@@ -391,18 +401,24 @@ class _ExtractCardState extends ConsumerState<_ExtractCard> {
   Widget build(BuildContext context) {
     final x = widget.extraction;
     final c = ref.read(extractionProvider.notifier);
+    final cs = context.cs;
+    final m3 = context.m3;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(m3.cardPad),
       decoration: BoxDecoration(
-        color: x == null ? context.pop.card : context.pop.soft,
-        borderRadius: Pop.cardRadius,
+        color: x == null ? cs.surfaceContainerLow : cs.primaryContainer,
+        borderRadius: m3.cardRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'Save the sound of this video as its own file. No need to fetch the link again.',
-            style: TextStyle(color: context.pop.muted),
+            style: TextStyle(
+              color: x == null
+                  ? cs.onSurfaceVariant
+                  : cs.onPrimaryContainer.withValues(alpha: 0.8),
+            ),
           ),
           const SizedBox(height: 12),
           if (x == null) ...[
@@ -432,14 +448,18 @@ class _ExtractCardState extends ConsumerState<_ExtractCard> {
                 Expanded(
                   child: PopProgressBar(
                     value: x.progress / 100,
-                    track: context.pop.trackOnSoft,
+                    wavy: true,
+                    active: true,
+                    color: cs.primary,
+                    track: cs.surfaceContainerLowest,
                   ),
                 ),
                 const SizedBox(width: 8),
                 PopIconButton(
                   icon: Icons.close_rounded,
                   tooltip: 'Cancel extraction',
-                  background: context.pop.bg,
+                  background: cs.surfaceContainerLowest,
+                  foreground: cs.onSurface,
                   onPressed: () => c.cancel(widget.job.id),
                 ),
               ],
@@ -447,7 +467,10 @@ class _ExtractCardState extends ConsumerState<_ExtractCard> {
             const SizedBox(height: 6),
             Text(
               'Extracting audio… ${x.progress.toStringAsFixed(0)}%',
-              style: TextStyle(fontSize: 12, color: context.pop.muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+              ),
             ),
           ],
         ],
@@ -464,6 +487,8 @@ class _FileRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cs = context.cs;
+    final m3 = context.m3;
     final exists = File(path).existsSync();
     final kind = kindOf(path);
     final item = LibraryItem(
@@ -479,25 +504,20 @@ class _FileRow extends ConsumerWidget {
       LibraryKind.audio => Icons.music_note_rounded,
       LibraryKind.subtitles => Icons.subtitles_rounded,
     };
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-      decoration: BoxDecoration(
-        color: context.pop.card,
-        borderRadius: Pop.cardRadius,
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
       child: Row(
         children: [
           Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: exists ? context.pop.soft : context.pop.field,
-              borderRadius: Pop.thumbRadius,
+              color: exists ? cs.primaryContainer : cs.surfaceContainerHigh,
+              borderRadius: m3.thumbRadius,
             ),
             child: Icon(
               icon,
-              color: exists ? context.pop.text : context.pop.muted,
+              color: exists ? cs.onPrimaryContainer : cs.onSurfaceVariant,
             ),
           ),
           const SizedBox(width: 12),
@@ -515,7 +535,7 @@ class _FileRow extends ConsumerWidget {
                   exists
                       ? '${item.ext} · ${fileSizeLabel(path) ?? ''}'
                       : 'Deleted from the phone',
-                  style: TextStyle(fontSize: 12, color: context.pop.muted),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
@@ -570,9 +590,12 @@ class _FileRow extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Pop.error, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: context.cs.error,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
 import '../../core/utils/permissions.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
 import '../../data/engine/media_info.dart';
@@ -252,11 +253,13 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     return Semantics(
       checked: picked,
       button: true,
       child: InkWell(
-        borderRadius: Pop.cardRadius,
+        borderRadius: m3.cardRadius,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -276,7 +279,7 @@ class _EntryRow extends StatelessWidget {
                       child: DecoratedBox(
                         decoration: const ShapeDecoration(
                           shape: StadiumBorder(),
-                          color: Pop.ink,
+                          color: Color(0xCC141414),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -304,30 +307,33 @@ class _EntryRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: picked ? context.pop.text : context.pop.muted,
+                    color: picked ? cs.onSurface : cs.onSurfaceVariant,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               AnimatedContainer(
-                duration: Pop.medium,
+                duration: m3.motion.resolve(
+                  context,
+                  m3.motion.defaultSpatialDuration,
+                ),
+                curve: m3.motion.defaultSpatialCurve,
                 width: 28,
                 height: 28,
                 decoration: ShapeDecoration(
-                  color: picked ? context.pop.strong : Colors.transparent,
-                  shape: CircleBorder(
+                  color: picked ? cs.primary : Colors.transparent,
+                  shape: ExpressivePolygonBorder(
+                    polygon: picked
+                        ? ExpressivePolygon.cookie9
+                        : ExpressivePolygon.circle,
                     side: BorderSide(
-                      color: picked ? context.pop.strong : context.pop.muted,
+                      color: picked ? cs.primary : cs.onSurfaceVariant,
                       width: 2,
                     ),
                   ),
                 ),
                 child: picked
-                    ? Icon(
-                        Icons.check_rounded,
-                        size: 18,
-                        color: context.pop.onStrong,
-                      )
+                    ? Icon(Icons.check_rounded, size: 17, color: cs.onPrimary)
                     : null,
               ),
             ],

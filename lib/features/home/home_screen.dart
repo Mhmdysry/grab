@@ -8,9 +8,11 @@ import '../../core/theme/pop_theme.dart';
 import '../../core/utils/links.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/engine/media_info.dart';
+import '../../data/settings/app_settings.dart';
 import '../detail/download_detail_screen.dart';
 import 'fetch_controller.dart';
 import 'format_sheet.dart';
@@ -111,12 +113,23 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             Row(
               children: [
+                ExpressiveShapeContainer(
+                  polygon: ExpressivePolygon.cookie12,
+                  size: 36,
+                  color: context.cs.primaryContainer,
+                  child: Icon(
+                    Icons.download_rounded,
+                    size: 20,
+                    color: context.cs.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 const Text(
                   'Grab',
                   style: TextStyle(
                     fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
                   ),
                 ),
                 const Spacer(),
@@ -128,26 +141,29 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
             const SizedBox(height: 28),
-            SizedBox(
-              height: 112,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Text(
-                        'Paste a link.\nGet the file.',
-                        style: TextStyle(
-                          fontSize: 46,
-                          fontWeight: FontWeight.w800,
-                          height: 1.02,
-                          letterSpacing: -0.6,
-                        ),
-                      )
-                      .animate(target: still ? null : 1)
-                      .fadeIn(duration: 400.ms)
-                      .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic),
-                ],
-              ),
-            ),
+            if (still)
+              const Text(
+                'Paste a link.\nGet the file.',
+                style: TextStyle(
+                  fontSize: 46,
+                  fontWeight: FontWeight.w900,
+                  height: 1.02,
+                  letterSpacing: -1.1,
+                ),
+              )
+            else
+              const Text(
+                    'Paste a link.\nGet the file.',
+                    style: TextStyle(
+                      fontSize: 46,
+                      fontWeight: FontWeight.w900,
+                      height: 1.02,
+                      letterSpacing: -1.1,
+                    ),
+                  )
+                  .animate()
+                  .fadeIn(duration: 400.ms)
+                  .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic),
             const SizedBox(height: 24),
             _LinkField(
               controller: _url,
@@ -171,7 +187,7 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                 loading: () => 'Starting engine…',
                 error: (e, _) => 'Engine failed to start',
               ),
-              style: TextStyle(fontSize: 12, color: context.pop.muted),
+              style: TextStyle(fontSize: 12, color: context.cs.onSurfaceVariant),
             ),
             ...switch (s.info) {
               AsyncLoading() => [
@@ -192,10 +208,16 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(height: 28),
               const PopSection('Recent'),
               for (final (i, j) in recent.indexed)
-                _RecentRow(job: j)
-                    .animate(target: still ? null : 1)
-                    .fadeIn(duration: Pop.medium, delay: (60 * i).ms)
-                    .slideX(begin: 0.08, end: 0, curve: Curves.easeOutCubic),
+                if (still)
+                  _RecentRow(job: j)
+                else
+                  _RecentRow(job: j)
+                      .animate()
+                      .fadeIn(
+                        duration: context.m3.motion.defaultEffectsDuration,
+                        delay: (50 * i).ms,
+                      )
+                      .slideX(begin: 0.08, end: 0, curve: Curves.easeOutCubic),
             ],
           ],
         ),
@@ -204,8 +226,8 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// Pill text field with the Fetch button inside it.
-class _LinkField extends StatelessWidget {
+/// Pill text field with animated focus outline and shape-morphing Fetch button.
+class _LinkField extends StatefulWidget {
   const _LinkField({
     required this.controller,
     required this.busy,
@@ -217,41 +239,72 @@ class _LinkField extends StatelessWidget {
   final VoidCallback onFetch;
 
   @override
+  State<_LinkField> createState() => _LinkFieldState();
+}
+
+class _LinkFieldState extends State<_LinkField> {
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
+    final cs = context.cs;
+    final m3 = context.m3;
+    final radius = m3.shapeStyle == M3ShapeStyle.crisp ? 18.0 : 999.0;
+    return AnimatedContainer(
+      duration: m3.motion.resolve(context, m3.motion.fastEffectsDuration),
       padding: const EdgeInsets.fromLTRB(20, 6, 6, 6),
       decoration: ShapeDecoration(
-        shape: const StadiumBorder(),
-        color: context.pop.field,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius),
+          side: BorderSide(
+            color: _focus.hasFocus ? cs.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        color: cs.surfaceContainerHighest,
       ),
       child: Row(
         children: [
           Expanded(
             child: TextField(
-              controller: controller,
+              focusNode: _focus,
+              controller: widget.controller,
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.go,
-              onSubmitted: (_) => onFetch(),
+              onSubmitted: (_) => widget.onFetch(),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               decoration: const InputDecoration(
                 hintText: 'Paste a video link',
                 filled: false,
                 border: InputBorder.none,
+                focusedBorder: InputBorder.none,
                 isCollapsed: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
-          if (controller.text.isNotEmpty && !busy)
+          if (widget.controller.text.isNotEmpty && !widget.busy)
             IconButton(
               tooltip: 'Clear',
-              onPressed: controller.clear,
+              onPressed: widget.controller.clear,
               icon: const Icon(Icons.close_rounded, size: 20),
             ),
           PopButton(
             label: 'Fetch',
-            onPressed: onFetch,
-            busy: busy,
+            onPressed: widget.onFetch,
+            busy: widget.busy,
             expand: false,
             height: 48,
           ),
@@ -269,56 +322,58 @@ class _PlatformChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: Pop.medium,
-      curve: Curves.easeOutBack,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: ShapeDecoration(
-        shape: const StadiumBorder(),
-        color: active ? context.pop.strong : context.pop.soft,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: active ? context.pop.onStrong : context.pop.text,
+    final cs = context.cs;
+    final m3 = context.m3;
+    return AnimatedScale(
+      scale: active ? 1.05 : 1.0,
+      duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
+      curve: m3.motion.defaultSpatialCurve,
+      child: AnimatedContainer(
+        duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
+        curve: m3.motion.defaultSpatialCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: ShapeDecoration(
+          shape: const StadiumBorder(),
+          color: active ? cs.primary : cs.secondaryContainer,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: active ? cs.onPrimary : cs.onSecondaryContainer,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Placeholder while yt-dlp reads the link.
+/// Placeholder while yt-dlp reads the link, featuring the M3 Expressive polygon loader.
 class _FetchingCard extends StatelessWidget {
   const _FetchingCard();
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     Widget bar(double w, double h) => Container(
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: context.pop.track,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(h),
       ),
     );
     final card = Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(m3.cardPad),
       decoration: BoxDecoration(
-        color: context.pop.card,
-        borderRadius: Pop.cardRadius,
+        color: cs.surfaceContainerLow,
+        borderRadius: m3.cardRadius,
       ),
       child: Row(
         children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: context.pop.track,
-              borderRadius: Pop.thumbRadius,
-            ),
-          ),
+          const ExpressiveLoadingIndicator(size: 56),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -330,7 +385,11 @@ class _FetchingCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   'Reading the link…',
-                  style: TextStyle(color: context.pop.muted, fontSize: 13),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -338,10 +397,10 @@ class _FetchingCard extends StatelessWidget {
         ],
       ),
     );
-    if (Pop.reduceMotion(context)) return card;
+    if (m3.motion.reduced(context)) return card;
     return card
         .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1200.ms, color: context.pop.bg);
+        .shimmer(duration: 1200.ms, color: cs.surface);
   }
 }
 
@@ -354,14 +413,16 @@ class _ReadyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     return InkWell(
-      borderRadius: Pop.cardRadius,
+      borderRadius: m3.cardRadius,
       onTap: onOpen,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(m3.cardPad),
         decoration: BoxDecoration(
-          color: context.pop.soft,
-          borderRadius: Pop.cardRadius,
+          color: cs.primaryContainer,
+          borderRadius: m3.cardRadius,
         ),
         child: Row(
           children: [
@@ -375,9 +436,10 @@ class _ReadyCard extends StatelessWidget {
                     info.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
+                      color: cs.onPrimaryContainer,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -385,12 +447,15 @@ class _ReadyCard extends StatelessWidget {
                     info.isPlaylist
                         ? 'Pick from ${info.entries.length} items'
                         : 'Choose format',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded),
+            Icon(Icons.chevron_right_rounded, color: cs.onPrimaryContainer),
           ],
         ),
       ),
@@ -406,42 +471,59 @@ class _ErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-          padding: const EdgeInsets.fromLTRB(18, 16, 10, 8),
-          decoration: BoxDecoration(
-            color: context.pop.errorSoft,
-            borderRadius: Pop.cardRadius,
+    final cs = context.cs;
+    final m3 = context.m3;
+    final card = Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 10, 8),
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: m3.cardRadius,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Couldn't read that link",
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: cs.onErrorContainer,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 4),
+          Text(
+            message,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: cs.onErrorContainer),
+          ),
+          Row(
             children: [
-              const Text(
-                "Couldn't read that link",
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              TextButton(
+                onPressed: onRetry,
+                child: Text(
+                  'Try again',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onErrorContainer,
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(message, maxLines: 4, overflow: TextOverflow.ellipsis),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: onRetry,
-                    child: const Text(
-                      'Try again',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        Clipboard.setData(ClipboardData(text: message)),
-                    child: const Text('Copy error'),
-                  ),
-                ],
+              TextButton(
+                onPressed: () =>
+                    Clipboard.setData(ClipboardData(text: message)),
+                child: Text(
+                  'Copy error',
+                  style: TextStyle(color: cs.onErrorContainer),
+                ),
               ),
             ],
           ),
-        )
-        .animate(target: Pop.reduceMotion(context) ? null : 1)
-        .shakeX(hz: 4, amount: 4, duration: 350.ms);
+        ],
+      ),
+    );
+    if (m3.motion.reduced(context)) return card;
+    return card.animate().shakeX(hz: 4, amount: 4, duration: 350.ms);
   }
 }
 
@@ -452,6 +534,8 @@ class _RecentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m3 = context.m3;
+    final cs = context.cs;
     final mode = DownloadMode.values.byName(job.mode);
     final audio = mode == DownloadMode.audioOnly;
     final what = switch (mode) {
@@ -463,23 +547,23 @@ class _RecentRow extends StatelessWidget {
       ].join(' · '),
     };
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.only(bottom: m3.listGap),
       child: Morph(
-        color: context.pop.card,
+        color: cs.surfaceContainerLow,
         page: (_) => DownloadDetailScreen(jobId: job.id),
         builder: (context, open) => InkWell(
           onTap: open,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(m3.cardPad - 4),
             child: Row(
               children: [
                 PopThumb(
                   seed: job.id,
                   url: job.thumbnail,
                   audio: audio,
-                  size: 96,
+                  size: m3.thumbSize + 28,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,7 +583,7 @@ class _RecentRow extends StatelessWidget {
                         Text(
                           job.site!,
                           style: TextStyle(
-                            color: context.pop.muted,
+                            color: cs.onSurfaceVariant,
                             fontSize: 13,
                           ),
                         ),
@@ -508,7 +592,11 @@ class _RecentRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, semanticLabel: 'Open'),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: cs.onSurfaceVariant,
+                  semanticLabel: 'Open',
+                ),
               ],
             ),
           ),

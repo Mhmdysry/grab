@@ -29,6 +29,18 @@ class AppPlugin(
         MethodChannel(messenger, "grab/app").setMethodCallHandler { call, result ->
             when (call.method) {
                 "abis" -> result.success(Build.SUPPORTED_ABIS.toList())
+                "dynamicColor" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val color = try {
+                            context.getColor(android.R.color.system_accent1_500)
+                        } catch (_: Throwable) {
+                            null
+                        }
+                        result.success(color)
+                    } else {
+                        result.success(null)
+                    }
+                }
                 "openUrl" -> {
                     start(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url")!!)))
                     result.success(null)

@@ -10,6 +10,7 @@ import '../../core/audio/audio_playback.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
@@ -91,9 +92,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Pop.error, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: context.cs.error,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -128,16 +132,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _grid(List<LibraryItem> items, {double bottom = 18}) {
-    final still = Pop.reduceMotion(context);
+    final m3 = context.m3;
+    final still = m3.motion.reduced(context);
+    final cols = ref.watch(settingsProvider.select((s) => s.libraryColumns));
+    final gap = m3.listGap;
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(24, 0, 24, bottom),
       sliver: SliverGrid.builder(
         itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 18,
-          crossAxisSpacing: 14,
-          childAspectRatio: 0.78,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols,
+          mainAxisSpacing: gap + 4,
+          crossAxisSpacing: gap,
+          childAspectRatio: cols == 3 ? 0.68 : 0.78,
         ),
         itemBuilder: (context, i) {
           final item = items[i];
@@ -146,14 +153,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             item: item,
             selecting: _selecting,
             selected: _picked.contains(item.path),
+            compact: cols == 3,
             onToggle: () => _toggle(item),
           );
           return still
               ? tile
               : tile
                     .animate()
-                    .fadeIn(duration: Pop.medium, delay: (30 * (i % 10)).ms)
-                    .scaleXY(begin: 0.94, end: 1, curve: Curves.easeOutBack);
+                    .fadeIn(
+                      duration: m3.motion.defaultEffectsDuration,
+                      delay: (25 * (i % 10)).ms,
+                    )
+                    .scaleXY(
+                      begin: 0.94,
+                      end: 1,
+                      curve: m3.motion.defaultSpatialCurve,
+                    );
         },
       ),
     );
@@ -296,14 +311,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     ),
                     child: Column(
                       children: [
-                        Icon(
-                          all.isEmpty
-                              ? Icons.video_library_rounded
-                              : Icons.search_off_rounded,
-                          size: 44,
-                          color: context.pop.muted,
+                        ExpressiveShapeContainer(
+                          polygon: ExpressivePolygon.clover4,
+                          size: 72,
+                          color: context.cs.secondaryContainer,
+                          child: Icon(
+                            all.isEmpty
+                                ? Icons.video_library_rounded
+                                : Icons.search_off_rounded,
+                            size: 34,
+                            color: context.cs.onSecondaryContainer,
+                          ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 14),
                         Text(
                           all.isEmpty
                               ? 'Your downloads show up here'
@@ -347,32 +367,32 @@ class _Tile extends ConsumerWidget {
     required this.item,
     required this.selecting,
     required this.selected,
+    required this.compact,
     required this.onToggle,
   });
 
   final LibraryItem item;
   final bool selecting;
   final bool selected;
+  final bool compact;
   final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cs = context.cs;
+    final m3 = context.m3;
     final subs = item.kind == LibraryKind.subtitles;
     return Semantics(
       button: true,
       label:
           '${item.title}, ${item.ext}${selecting ? (selected ? ', selected' : ', not selected') : ''}',
       excludeSemantics: true,
-      // The whole tile grows into the download's page.
       child: Morph(
-        // No rounding here: the thumbnail rounds itself, and rounded corners on
-        // the whole tile clipped the first letter of the caption.
         shape: const RoundedRectangleBorder(),
         page: (_) => DownloadDetailScreen(jobId: item.jobId),
         builder: (context, open) => InkWell(
-          borderRadius: Pop.thumbRadius,
+          borderRadius: m3.thumbRadius,
           onTap: selecting ? onToggle : open,
-          // Long-press starts picking several files.
           onLongPress: onToggle,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,13 +404,13 @@ class _Tile extends ConsumerWidget {
                       child: subs
                           ? Container(
                               decoration: BoxDecoration(
-                                color: context.pop.soft,
-                                borderRadius: Pop.thumbRadius,
+                                color: cs.tertiaryContainer,
+                                borderRadius: m3.thumbRadius,
                               ),
                               child: Icon(
                                 Icons.subtitles_rounded,
                                 size: 40,
-                                color: context.pop.text,
+                                color: cs.onTertiaryContainer,
                               ),
                             )
                           : PopThumb(
@@ -404,9 +424,9 @@ class _Tile extends ConsumerWidget {
                       left: 8,
                       top: 8,
                       child: DecoratedBox(
-                        decoration: const ShapeDecoration(
-                          shape: StadiumBorder(),
-                          color: Pop.ink,
+                        decoration: ShapeDecoration(
+                          shape: const StadiumBorder(),
+                          color: cs.primaryContainer,
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -415,8 +435,8 @@ class _Tile extends ConsumerWidget {
                           ),
                           child: Text(
                             item.ext,
-                            style: const TextStyle(
-                              color: Pop.yellow,
+                            style: TextStyle(
+                              color: cs.onPrimaryContainer,
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
                             ),
@@ -428,9 +448,9 @@ class _Tile extends ConsumerWidget {
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            borderRadius: Pop.thumbRadius,
-                            border: Border.all(color: Pop.yellow, width: 4),
-                            color: Pop.ink.withValues(alpha: 0.25),
+                            borderRadius: m3.thumbRadius,
+                            border: Border.all(color: cs.primary, width: 3.5),
+                            color: cs.primary.withValues(alpha: 0.2),
                           ),
                         ),
                       ),
@@ -440,36 +460,65 @@ class _Tile extends ConsumerWidget {
                       child: selecting
                           ? Padding(
                               padding: const EdgeInsets.all(8),
-                              child: AnimatedContainer(
-                                duration: Pop.medium,
-                                width: 28,
-                                height: 28,
-                                decoration: ShapeDecoration(
-                                  color: selected ? Pop.yellow : Colors.black38,
-                                  shape: const CircleBorder(
-                                    side: BorderSide(
-                                      color: Colors.white,
-                                      width: 2,
+                              child: AnimatedScale(
+                                scale: selected ? 1.08 : 1.0,
+                                duration: m3.motion.resolve(
+                                  context,
+                                  m3.motion.fastSpatialDuration,
+                                ),
+                                curve: m3.motion.fastSpatialCurve,
+                                child: AnimatedContainer(
+                                  duration: m3.motion.resolve(
+                                    context,
+                                    m3.motion.defaultSpatialDuration,
+                                  ),
+                                  curve: m3.motion.defaultSpatialCurve,
+                                  width: 28,
+                                  height: 28,
+                                  decoration: ShapeDecoration(
+                                    color: selected
+                                        ? cs.primary
+                                        : Colors.black38,
+                                    shape: ExpressivePolygonBorder(
+                                      polygon: selected
+                                          ? ExpressivePolygon.cookie9
+                                          : ExpressivePolygon.circle,
+                                      side: const BorderSide(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
                                     ),
                                   ),
+                                  child: selected
+                                      ? Icon(
+                                          Icons.check_rounded,
+                                          size: 17,
+                                          color: cs.onPrimary,
+                                        )
+                                      : null,
                                 ),
-                                child: selected
-                                    ? const Icon(
-                                        Icons.check_rounded,
-                                        size: 18,
-                                        color: Pop.ink,
-                                      )
-                                    : null,
                               ),
                             )
                           : IconButton(
                               tooltip: 'More',
                               onPressed: () => _actions(context, ref),
+                              padding: compact
+                                  ? EdgeInsets.zero
+                                  : const EdgeInsets.all(8),
+                              constraints: compact
+                                  ? const BoxConstraints.tightFor(
+                                      width: 30,
+                                      height: 30,
+                                    )
+                                  : null,
                               style: IconButton.styleFrom(
-                                backgroundColor: Colors.black38,
+                                backgroundColor: Colors.black45,
                                 foregroundColor: Colors.white,
                               ),
-                              icon: const Icon(Icons.more_horiz_rounded),
+                              icon: Icon(
+                                Icons.more_horiz_rounded,
+                                size: compact ? 18 : 24,
+                              ),
                             ),
                     ),
                   ],
@@ -480,9 +529,9 @@ class _Tile extends ConsumerWidget {
                 item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 15,
+                  fontSize: compact ? 13 : 15,
                 ),
               ),
               Text(
@@ -490,7 +539,12 @@ class _Tile extends ConsumerWidget {
                   item.site,
                   fileSizeLabel(item.path),
                 ].whereType<String>().join(' · '),
-                style: TextStyle(color: context.pop.muted, fontSize: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: compact ? 11 : 12,
+                ),
               ),
             ],
           ),
@@ -502,46 +556,56 @@ class _Tile extends ConsumerWidget {
   Future<void> _actions(BuildContext context, WidgetRef ref) async {
     final action = await showModalBottomSheet<String>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                item.fileName,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              if (item.kind != LibraryKind.subtitles)
-                ListTile(
-                  leading: const Icon(Icons.play_arrow_rounded),
-                  title: const Text('Play'),
-                  onTap: () => Navigator.pop(context, 'play'),
+      builder: (context) {
+        final cs = context.cs;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  item.fileName,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
-              ListTile(
-                leading: const Icon(Icons.share_rounded),
-                title: const Text('Share'),
-                onTap: () => Navigator.pop(context, 'share'),
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Pop.error,
+                const SizedBox(height: 16),
+                ExpressiveGroup(
+                  children: [
+                    if (item.kind != LibraryKind.subtitles)
+                      ExpressiveListRow(
+                        title: 'Play',
+                        leading: Icon(
+                          Icons.play_arrow_rounded,
+                          color: cs.primary,
+                        ),
+                        onTap: () => Navigator.pop(context, 'play'),
+                      ),
+                    ExpressiveListRow(
+                      title: 'Share',
+                      leading: Icon(Icons.share_rounded, color: cs.primary),
+                      onTap: () => Navigator.pop(context, 'share'),
+                    ),
+                    ExpressiveListRow(
+                      title: 'Delete file',
+                      leading: Icon(
+                        Icons.delete_outline_rounded,
+                        color: cs.error,
+                      ),
+                      onTap: () => Navigator.pop(context, 'delete'),
+                    ),
+                  ],
                 ),
-                title: const Text(
-                  'Delete file',
-                  style: TextStyle(color: Pop.error),
-                ),
-                onTap: () => Navigator.pop(context, 'delete'),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
     if (!context.mounted) return;
     switch (action) {
@@ -566,10 +630,10 @@ class _Tile extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text(
+                child: Text(
                   'Delete',
                   style: TextStyle(
-                    color: Pop.error,
+                    color: context.cs.error,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -613,6 +677,7 @@ class _SelectionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
     return SizedBox(
       height: 48,
       child: Row(
@@ -638,8 +703,8 @@ class _SelectionBar extends StatelessWidget {
           PopIconButton(
             icon: Icons.delete_outline_rounded,
             tooltip: 'Delete selected',
-            background: context.pop.errorSoft,
-            foreground: Pop.error,
+            background: cs.errorContainer,
+            foreground: cs.onErrorContainer,
             onPressed: onDelete,
           ),
         ],

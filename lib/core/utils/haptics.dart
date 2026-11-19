@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 abstract final class Haptics {
   static const _channel = MethodChannel('grab/haptics');
 
+  /// Global toggle synced with AppSettings.hapticsEnabled.
+  static bool enabled = true;
+
   /// Moving between options: tabs, segments, chips. The lightest tick.
   static Future<void> selection() =>
       _play('selection', HapticFeedback.selectionClick);
@@ -28,6 +31,7 @@ abstract final class Haptics {
     String type,
     Future<void> Function() fallback,
   ) async {
+    if (!enabled) return;
     try {
       await _channel.invokeMethod('play', {'type': type});
     } on MissingPluginException {

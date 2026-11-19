@@ -7,6 +7,8 @@ import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
 import '../../core/utils/permissions.dart';
 import '../../core/utils/platform.dart';
+import '../../core/widgets/expressive_shapes.dart';
+import '../../core/widgets/pop_widgets.dart';
 
 /// Three short pages shown on first launch.
 class WelcomeScreen extends StatefulWidget {
@@ -100,7 +102,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _next() async {
     Haptics.light();
     if (_page == _pages.length - 1) {
-      // The last page explains notifications; ask now, then never again at first download.
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('askedNotifications', true);
       await requestNotifications();
@@ -112,26 +113,27 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
     final last = _page == _pages.length - 1;
-    final still = Pop.reduceMotion(context);
-    // Dark status bar icons on yellow.
+    final still = m3.motion.reduced(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: Pop.yellow,
+        backgroundColor: cs.primaryContainer,
         body: SafeArea(
           child: Column(
             children: [
               Align(
                 alignment: Alignment.centerRight,
-                // "Not now" on the notifications page: notifications stay off,
-                // and Grab asks again (with its explanation) at the first download.
                 child: TextButton(
                   onPressed: widget.onDone,
                   child: Text(
                     last && isPhone ? 'Not now' : 'Skip',
-                    style: const TextStyle(
-                      color: Pop.ink,
+                    style: TextStyle(
+                      color: cs.onPrimaryContainer,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -147,54 +149,72 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   },
                   itemBuilder: (context, i) {
                     final p = _pages[i];
+                    final hero = ExpressiveShapeContainer(
+                      polygon: i.isEven
+                          ? ExpressivePolygon.cookie12
+                          : ExpressivePolygon.clover4,
+                      size: 112,
+                      color: cs.primary,
+                      child: Icon(p.icon, color: cs.onPrimary, size: 50),
+                    );
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Same top on every page, so the icon doesn't jump.
-                          const SizedBox(height: 56),
+                          const SizedBox(height: 48),
                           SizedBox(
-                            width: 150,
-                            height: 150,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Container(
-                                  width: 96,
-                                  height: 96,
-                                  decoration: const ShapeDecoration(
-                                    shape: CircleBorder(),
-                                    color: Pop.ink,
-                                  ),
-                                  child: Icon(
-                                    p.icon,
-                                    color: Pop.yellow,
-                                    size: 48,
-                                  ),
-                                ),
-                              ],
+                            width: 140,
+                            height: 140,
+                            child: Center(
+                              child: still
+                                  ? hero
+                                  : hero
+                                        .animate(
+                                          onPlay: (c) =>
+                                              c.repeat(reverse: true),
+                                        )
+                                        .scaleXY(
+                                          begin: 0.96,
+                                          end: 1.04,
+                                          duration: 2400.ms,
+                                          curve: Curves.easeInOut,
+                                        ),
                             ),
                           ),
-                          const SizedBox(height: 28),
-                          Text(
-                                p.title,
-                                style: const TextStyle(
-                                  color: Pop.ink,
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.02,
-                                  letterSpacing: -0.6,
-                                ),
-                              )
-                              .animate(target: still ? null : 1)
-                              .fadeIn(duration: 350.ms)
-                              .slideY(begin: 0.15, end: 0),
+                          const SizedBox(height: 24),
+                          if (still)
+                            Text(
+                              p.title,
+                              style: TextStyle(
+                                color: cs.onPrimaryContainer,
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                                height: 1.02,
+                                letterSpacing: -1.0,
+                              ),
+                            )
+                          else
+                            Text(
+                                  p.title,
+                                  style: TextStyle(
+                                    color: cs.onPrimaryContainer,
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.02,
+                                    letterSpacing: -1.0,
+                                  ),
+                                )
+                                .animate()
+                                .fadeIn(duration: 350.ms)
+                                .slideY(begin: 0.15, end: 0),
                           const SizedBox(height: 14),
                           Text(
                             p.body,
-                            style: const TextStyle(
-                              color: Pop.ink,
+                            style: TextStyle(
+                              color: cs.onPrimaryContainer.withValues(
+                                alpha: 0.85,
+                              ),
                               fontSize: 16,
                               height: 1.35,
                             ),
@@ -209,14 +229,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                     width: 28,
                                     height: 28,
                                     alignment: Alignment.center,
-                                    decoration: const ShapeDecoration(
-                                      shape: CircleBorder(),
-                                      color: Pop.ink,
+                                    decoration: ShapeDecoration(
+                                      shape: const CircleBorder(),
+                                      color: cs.primary,
                                     ),
                                     child: Text(
                                       '${n + 1}',
-                                      style: const TextStyle(
-                                        color: Pop.yellow,
+                                      style: TextStyle(
+                                        color: cs.onPrimary,
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
@@ -225,8 +245,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   Expanded(
                                     child: Text(
                                       step,
-                                      style: const TextStyle(
-                                        color: Pop.ink,
+                                      style: TextStyle(
+                                        color: cs.onPrimaryContainer,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 15,
                                       ),
@@ -248,42 +268,29 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   children: [
                     for (var i = 0; i < _pages.length; i++)
                       AnimatedContainer(
-                        duration: Pop.medium,
-                        curve: Curves.easeOutBack,
+                        duration: m3.motion.resolve(
+                          context,
+                          m3.motion.defaultSpatialDuration,
+                        ),
+                        curve: m3.motion.defaultSpatialCurve,
                         margin: const EdgeInsets.only(right: 6),
                         width: i == _page ? 24 : 8,
                         height: 8,
                         decoration: ShapeDecoration(
                           shape: const StadiumBorder(),
                           color: i == _page
-                              ? Pop.ink
-                              : Pop.ink.withValues(alpha: 0.25),
+                              ? cs.primary
+                              : cs.onPrimaryContainer.withValues(alpha: 0.25),
                         ),
                       ),
                     const Spacer(),
-                    Material(
-                      color: Pop.ink,
-                      shape: const StadiumBorder(),
-                      child: InkWell(
-                        customBorder: const StadiumBorder(),
-                        onTap: _next,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 26,
-                            vertical: 16,
-                          ),
-                          child: Text(
-                            last
-                                ? (isPhone ? 'Allow & start' : "Let's go")
-                                : 'Next',
-                            style: const TextStyle(
-                              color: Pop.yellow,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ),
+                    PopButton(
+                      label: last
+                          ? (isPhone ? 'Allow & start' : "Let's go")
+                          : 'Next',
+                      expand: false,
+                      height: 52,
+                      onPressed: _next,
                     ),
                   ],
                 ),

@@ -3,8 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../theme/pop_theme.dart';
 
-/// "You copied a link" card that floats above the dock, with a big yellow
-/// Grab button. Ink in both themes so it stands out from any page behind it.
+/// "You copied a link" M3 Expressive tonal banner that floats above the dock.
 class ClipboardOffer extends StatelessWidget {
   const ClipboardOffer({
     super.key,
@@ -21,28 +20,34 @@ class ClipboardOffer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final still = Pop.reduceMotion(context);
+    final cs = context.cs;
+    final m3 = context.m3;
+    final still = m3.motion.reduced(context);
+
     final button = Material(
-      color: Pop.yellow,
+      color: cs.primaryContainer,
       shape: const StadiumBorder(),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: onGrab,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.download_rounded, color: Pop.ink, size: 20),
-              SizedBox(width: 6),
+              Icon(
+                Icons.download_rounded,
+                color: cs.onPrimaryContainer,
+                size: 20,
+              ),
+              const SizedBox(width: 6),
               Text(
                 'Grab it',
                 style: TextStyle(
                   fontFamily: Pop.font,
-                  color: Pop.ink,
+                  color: cs.onPrimaryContainer,
                   fontWeight: FontWeight.w800,
-                  fontSize: 16,
+                  fontSize: 15,
                 ),
               ),
             ],
@@ -58,14 +63,14 @@ class ClipboardOffer extends StatelessWidget {
         direction: DismissDirection.down,
         onDismissed: (_) => onDismiss(),
         child: Material(
-          color: Pop.ink,
-          elevation: 10,
-          shadowColor: Colors.black54,
+          color: cs.inverseSurface,
+          elevation: 8,
+          shadowColor: Colors.black38,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-            side: dark
-                ? const BorderSide(color: Pop.yellow, width: 1.5)
-                : BorderSide.none,
+            borderRadius: m3.cardRadius,
+            side: BorderSide(
+              color: cs.outlineVariant.withValues(alpha: 0.3),
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 10, 10, 10),
@@ -80,11 +85,11 @@ class ClipboardOffer extends StatelessWidget {
                         '$platform link copied',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: Pop.font,
-                          color: Colors.white,
+                          color: cs.onInverseSurface,
                           fontWeight: FontWeight.w800,
-                          fontSize: 16,
+                          fontSize: 15,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -92,9 +97,9 @@ class ClipboardOffer extends StatelessWidget {
                         link.replaceFirst(RegExp(r'^https?://(www\.)?'), ''),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: Pop.font,
-                          color: Colors.white60,
+                          color: cs.onInverseSurface.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
@@ -104,7 +109,7 @@ class ClipboardOffer extends StatelessWidget {
                 IconButton(
                   tooltip: 'Dismiss',
                   onPressed: onDismiss,
-                  color: Colors.white60,
+                  color: cs.onInverseSurface.withValues(alpha: 0.7),
                   icon: const Icon(Icons.close_rounded, size: 20),
                 ),
                 still
@@ -113,8 +118,8 @@ class ClipboardOffer extends StatelessWidget {
                           .animate(onPlay: (c) => c.repeat(reverse: true))
                           .scaleXY(
                             begin: 1,
-                            end: 1.06,
-                            duration: 700.ms,
+                            end: 1.05,
+                            duration: 750.ms,
                             curve: Curves.easeInOut,
                           ),
               ],

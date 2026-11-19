@@ -11,6 +11,7 @@ import 'package:toastification/toastification.dart';
 
 import '../core/theme/pop_theme.dart';
 import '../core/utils/links.dart';
+import '../core/utils/permissions.dart';
 import '../core/audio/audio_playback.dart';
 import '../core/widgets/app_scale.dart';
 import '../core/widgets/dock_inset.dart';
@@ -66,6 +67,10 @@ class GrabApp extends ConsumerWidget {
             builder: (context, child) {
               final theme = Theme.of(context);
               syncToastScheme(theme.colorScheme);
+              syncBubbleConfig(
+                enabled: settings.floatingBubbleEnabled,
+                scheme: theme.colorScheme,
+              );
               final isDark = theme.brightness == Brightness.dark;
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: isDark
@@ -389,7 +394,7 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
     final cs = context.cs;
     final showMiniBar = m3.navStyle != M3NavStyle.floatingPill;
     final overlayBottom = switch (m3.navStyle) {
-      M3NavStyle.floatingPill => 92.0,
+      M3NavStyle.floatingPill => 96.0,
       M3NavStyle.dockedBar => 84.0,
       M3NavStyle.minimalDock => 84.0,
     };
@@ -404,23 +409,20 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
               extra: showMiniBar && playing != null ? 64 : 0,
               child: child!,
             ),
-            child: IndexedStack(
+            child: ExpressiveTabStack(
               index: _tab,
               children: [
-                for (final (i, page) in <Widget>[
-                  HomeScreen(
-                    key: _home,
-                    onQueued: () => setState(() => _tab = 1),
-                    onFetch: (link) {
-                      _remember(link);
-                      _dismissOffer();
-                    },
-                  ),
-                  const DownloadsScreen(),
-                  const LibraryScreen(),
-                  const SettingsScreen(),
-                ].indexed)
-                  TickerMode(enabled: i == _tab, child: page),
+                HomeScreen(
+                  key: _home,
+                  onQueued: () => setState(() => _tab = 1),
+                  onFetch: (link) {
+                    _remember(link);
+                    _dismissOffer();
+                  },
+                ),
+                const DownloadsScreen(),
+                const LibraryScreen(),
+                const SettingsScreen(),
               ],
             ),
           ),

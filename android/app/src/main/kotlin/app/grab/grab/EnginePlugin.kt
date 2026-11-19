@@ -181,6 +181,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         active[job.id] = job.title to 0f
         refreshService()
         val startedAt = System.currentTimeMillis() - 2_000
+        var finishedOk: Boolean? = null
         try {
             ensureReady(context)
             val dir = outputDir()
@@ -209,7 +210,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             val paths = collectOutputs(dir, resp.out, job.match, startedAt)
             if (paths.isNotEmpty()) MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
             emit(mapOf("id" to job.id, "status" to "done", "progress" to 100.0, "paths" to paths))
-            main.post { DownloadService.notifyFinished(context, job.id, job.title, ok = true) }
+            finishedOk = true
         } catch (e: YoutubeDL.CanceledException) {
             emit(mapOf("id" to job.id, "status" to "canceled"))
         } catch (e: Throwable) {
@@ -217,11 +218,14 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             emit(mapOf("id" to job.id, "status" to "error", "error" to msg))
             // Connection drops are retried by the app, so don't announce a failure for them.
             if (!networkError.containsMatchIn(msg)) {
-                main.post { DownloadService.notifyFinished(context, job.id, job.title, ok = false) }
+                finishedOk = false
             }
         } finally {
             active.remove(job.id)
             refreshService()
+            finishedOk?.let { ok ->
+                main.post { DownloadService.notifyFinished(context, job.id, job.title, ok = ok) }
+            }
         }
     }
 
@@ -243,6 +247,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         emit(mapOf("id" to id, "status" to "starting"))
         active[id] = title to 0f
         refreshService()
+        var finishedOk = false
         try {
             ensureReady(context)
             if (!input.exists()) throw IllegalStateException("The file is no longer on the phone")
@@ -291,7 +296,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
                 else -> {
                     MediaScannerConnection.scanFile(context, arrayOf(output.absolutePath), null, null)
                     emit(mapOf("id" to id, "status" to "done", "progress" to 100.0, "paths" to listOf(output.absolutePath)))
-                    main.post { DownloadService.notifyFinished(context, id, title, ok = true) }
+                    finishedOk = true
                 }
             }
         } catch (e: Throwable) {
@@ -300,6 +305,9 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             processes.remove(id)
             active.remove(id)
             refreshService()
+            if (finishedOk) {
+                main.post { DownloadService.notifyFinished(context, id, title, ok = true) }
+            }
         }
     }
 

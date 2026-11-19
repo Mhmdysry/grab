@@ -440,17 +440,20 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
             onChanged: (v) => setState(() => _scrub = v),
           ),
           const SizedBox(height: 10),
-          // Mini Dual-Island Split Floating Dock preview
+          // Mini Stacked M3E Floating Nav + Shape-Morphing Companion Orb preview
           Row(
             children: [
               Expanded(
                 child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.all(4),
+                  height: 54,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(
-                      m3.shapeStyle == M3ShapeStyle.crisp ? 14 : 999,
+                      m3.shapeStyle == M3ShapeStyle.crisp ? 16 : 28,
                     ),
                     border: Border.all(
                       color: cs.outlineVariant.withValues(alpha: 0.45),
@@ -464,55 +467,61 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                         (2, Icons.video_library_rounded, 'Files'),
                       ])
                         Expanded(
-                          flex: _dockTab == i ? 2 : 1,
+                          flex: 1,
                           child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () {
                               Haptics.selection();
                               setState(() => _dockTab = i);
                             },
-                            child: AnimatedContainer(
-                              duration: m3.motion.resolve(
-                                context,
-                                m3.motion.defaultSpatialDuration,
-                              ),
-                              curve: m3.motion.defaultSpatialCurve,
-                              decoration: BoxDecoration(
-                                color: _dockTab == i
-                                    ? cs.primaryContainer
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(
-                                  m3.shapeStyle == M3ShapeStyle.crisp ? 10 : 999,
-                                ),
-                              ),
-                              alignment: Alignment.center,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                AnimatedContainer(
+                                  duration: m3.motion.resolve(
+                                    context,
+                                    m3.motion.defaultSpatialDuration,
+                                  ),
+                                  curve: m3.motion.defaultSpatialCurve,
+                                  width: _dockTab == i ? 42 : 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: _dockTab == i
+                                        ? cs.primaryContainer
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(
+                                      m3.shapeStyle == M3ShapeStyle.crisp
+                                          ? 9
+                                          : 999,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Icon(
                                     icon,
                                     size: 16,
                                     color: _dockTab == i
                                         ? cs.onPrimaryContainer
                                         : cs.onSurfaceVariant,
                                   ),
-                                  if (_dockTab == i) ...[
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.fade,
-                                        softWrap: false,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: cs.onPrimaryContainer,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  label,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.fade,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    height: 1.1,
+                                    fontWeight: _dockTab == i
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                    color: _dockTab == i
+                                        ? cs.onSurface
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -521,16 +530,28 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: cs.tertiaryContainer,
-                  borderRadius: BorderRadius.circular(
-                    m3.shapeStyle == M3ShapeStyle.crisp ? 12 : 16,
-                  ),
-                  border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha: 0.45),
+              AnimatedContainer(
+                duration: m3.motion.resolve(
+                  context,
+                  m3.motion.defaultSpatialDuration,
+                ),
+                curve: m3.motion.defaultSpatialCurve,
+                width: 48,
+                height: 48,
+                decoration: ShapeDecoration(
+                  color: _playing
+                      ? cs.surfaceContainerHigh
+                      : cs.tertiaryContainer,
+                  shape: ExpressivePolygonBorder(
+                    polygon: _playing
+                        ? ExpressivePolygon.cookie9
+                        : ExpressivePolygon.squircle,
+                    side: BorderSide(
+                      color: _playing
+                          ? cs.primary.withValues(alpha: 0.7)
+                          : cs.outlineVariant.withValues(alpha: 0.45),
+                      width: _playing ? 1.8 : 1.0,
+                    ),
                   ),
                 ),
                 alignment: Alignment.center,
@@ -538,8 +559,8 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                   _playing
                       ? Icons.graphic_eq_rounded
                       : Icons.content_paste_go_rounded,
-                  size: 19,
-                  color: cs.onTertiaryContainer,
+                  size: 20,
+                  color: _playing ? cs.primary : cs.onTertiaryContainer,
                 ),
               ),
             ],

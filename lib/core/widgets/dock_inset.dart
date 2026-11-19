@@ -13,7 +13,7 @@ class DockInset extends InheritedWidget {
   /// Bottom padding for a tab's scrolling list: the active nav bar, plus any mini player.
   static double listBottom(BuildContext context) {
     final base = switch (context.m3.navStyle) {
-      M3NavStyle.floatingPill => 120.0,
+      M3NavStyle.floatingPill => 124.0,
       M3NavStyle.dockedBar => 104.0,
       M3NavStyle.minimalDock => 106.0,
     };

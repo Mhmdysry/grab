@@ -58,6 +58,10 @@ class ShareOverlayApp extends ConsumerWidget {
             builder: (context, child) {
               final theme = Theme.of(context);
               syncToastScheme(theme.colorScheme);
+              syncBubbleConfig(
+                enabled: settings.floatingBubbleEnabled,
+                scheme: theme.colorScheme,
+              );
               final isDark = theme.brightness == Brightness.dark;
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: isDark
@@ -88,8 +92,9 @@ class _ShareOverlayHost extends ConsumerStatefulWidget {
 }
 
 class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _channel = MethodChannel('grab/share');
+  static const _dismissedBubbleKey = 'dismissedBubblePrompt';
 
   late final AnimationController _entrance = AnimationController(
     vsync: this,
@@ -101,6 +106,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   String? _customError;
   var _expanded = false;
   var _busyEnqueue = false;
+  var _showBubblePrompt = false;
   String? _queuedJobId;
   int _queuedCount = 1;
   final Set<int> _playlistPicked = {};
@@ -110,6 +116,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText') {
         await _handleIncoming(call.arguments as String?);
@@ -118,13 +125,56 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     _channel
         .invokeMethod<String>('takeSharedText')
         .then(_handleIncoming, onError: (_) {});
+    _refreshBubblePrompt();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoCloseTimer?.cancel();
     _entrance.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshBubblePrompt();
+    }
+  }
+
+  Future<void> _refreshBubblePrompt() async {
+    final prefs = ref.read(sharedPrefsProvider);
+    final dismissed = prefs.getBool(_dismissedBubbleKey) ?? false;
+    final enabled = ref.read(settingsProvider).floatingBubbleEnabled;
+    if (dismissed || !enabled) {
+      if (mounted && _showBubblePrompt) {
+        setState(() => _showBubblePrompt = false);
+      }
+      return;
+    }
+    final granted = await overlayPermissionGranted();
+    if (!mounted) return;
+    setState(() => _showBubblePrompt = !granted);
+  }
+
+  Future<void> _enableBubble() async {
+    Haptics.selection();
+    final granted = await requestOverlayPermission(context);
+    if (!mounted) return;
+    if (granted) {
+      setState(() => _showBubblePrompt = false);
+      await syncBubbleConfig(
+        enabled: true,
+        scheme: Theme.of(context).colorScheme,
+      );
+    }
+  }
+
+  Future<void> _dismissBubblePrompt() async {
+    Haptics.selection();
+    await ref.read(sharedPrefsProvider).setBool(_dismissedBubbleKey, true);
+    if (mounted) setState(() => _showBubblePrompt = false);
   }
 
   Future<void> _handleIncoming(String? raw) async {
@@ -132,6 +182,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     await ref.read(sharedPrefsProvider).reload();
     ref.invalidate(settingsProvider);
     if (!mounted) return;
+    _refreshBubblePrompt();
 
     final link = extractLink(raw) ?? raw?.trim();
     setState(() {
@@ -443,6 +494,9 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
                                 : () => ref
                                       .read(downloadRepositoryProvider)
                                       .cancel(activeJob.id),
+                            showBubblePrompt: _showBubblePrompt,
+                            onEnableBubble: _enableBubble,
+                            onDismissBubblePrompt: _dismissBubblePrompt,
                           ),
                         ),
                       ),
@@ -490,6 +544,9 @@ class ShareOverlayCard extends StatelessWidget {
     this.activeSpeed,
     this.onPauseResumeJob,
     this.onCancelJob,
+    this.showBubblePrompt = false,
+    this.onEnableBubble,
+    this.onDismissBubblePrompt,
   });
 
   final ShareCardPhase phase;
@@ -519,6 +576,9 @@ class ShareOverlayCard extends StatelessWidget {
   final String? activeSpeed;
   final VoidCallback? onPauseResumeJob;
   final VoidCallback? onCancelJob;
+  final bool showBubblePrompt;
+  final VoidCallback? onEnableBubble;
+  final VoidCallback? onDismissBubblePrompt;
 
   @override
   Widget build(BuildContext context) {
@@ -917,6 +977,59 @@ class ShareOverlayCard extends StatelessWidget {
                 ? _buildPlaylistExpanded(context, info)
                 : _buildSingleExpanded(context, info, activeMode),
           ),
+        if (showBubblePrompt) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+            decoration: BoxDecoration(
+              color: cs.secondaryContainer.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.bubble_chart_rounded,
+                  size: 18,
+                  color: cs.onSecondaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Float progress bubble over apps',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onEnableBubble,
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  child: const Text(
+                    'Turn on',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Dismiss',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onDismissBubblePrompt,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: cs.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           children: [

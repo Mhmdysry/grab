@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/links.dart';
+import '../../core/utils/permissions.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/dock_inset.dart';
 import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
+import '../../core/widgets/toasts.dart';
 import '../../data/db/app_database.dart';
 import '../../data/engine/media_info.dart';
 import '../../data/settings/app_settings.dart';
@@ -70,6 +72,109 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     if (queued) widget.onQueued?.call();
   }
 
+  Future<void> _instantDownload(MediaInfo info) async {
+    final ok = await ensureDownloadPermissions(
+      context,
+      ref.read(sharedPrefsProvider),
+    );
+    if (!mounted) return;
+    if (!ok) {
+      popToast(
+        'Grab needs storage access to save files',
+        error: true,
+        context: context,
+      );
+      return;
+    }
+    final jobId = await ref.read(fetchControllerProvider.notifier).download();
+    if (!mounted) return;
+    if (jobId != null) {
+      Haptics.success();
+      popToast(
+        'Instant Grab queued!',
+        icon: Icons.bolt_rounded,
+        detail: info.title,
+        context: context,
+      );
+      widget.onQueued?.call();
+    } else {
+      await _choose(info);
+    }
+  }
+
+  void _cycleDefaultMode(AppSettings s) {
+    Haptics.selection();
+    final next = switch (s.defaultMode) {
+      DownloadMode.video => DownloadMode.audioOnly,
+      DownloadMode.audioOnly => DownloadMode.videoAndAudio,
+      _ => DownloadMode.video,
+    };
+    ref.read(settingsProvider.notifier).update((x) => x.copyWith(defaultMode: next));
+  }
+
+  Future<void> _pickQuickQuality(AppSettings s) async {
+    Haptics.selection();
+    if (s.defaultMode == DownloadMode.audioOnly) {
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            children: [
+              const Text(
+                'Default audio format',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              for (final f in AppSettings.audioFormats)
+                PopOptionTile(
+                  label: f.toUpperCase(),
+                  selected: f == s.audioFormat,
+                  onTap: () => Navigator.of(context).pop(f),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (picked != null) {
+        await ref
+            .read(settingsProvider.notifier)
+            .update((x) => x.copyWith(audioFormat: picked));
+      }
+      return;
+    }
+    final picked = await showModalBottomSheet<(int?,)>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          children: [
+            const Text(
+              'Default quality',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            for (final h in AppSettings.heights)
+              PopOptionTile(
+                label: h == null ? 'Best available' : '${h}p or lower',
+                selected: h == s.maxHeight,
+                onTap: () => Navigator.of(context).pop((h,)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) {
+      await ref
+          .read(settingsProvider.notifier)
+          .update((x) => x.copyWith(maxHeight: () => picked.$1));
+    }
+  }
+
   void _fetch() {
     FocusScope.of(context).unfocus();
     final link = extractLink(_url.text) ?? _url.text.trim();
@@ -81,18 +186,26 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Open the format sheet as soon as a fetch succeeds.
+    // Open the format sheet (or Instant Grab) as soon as a fetch succeeds.
     ref.listen(fetchControllerProvider.select((s) => s.info), (
       prev,
       next,
     ) async {
       if (prev is AsyncLoading && next is AsyncData && next.value != null) {
         Haptics.light();
-        await _choose(next.value!);
+        final info = next.value!;
+        final settings = ref.read(settingsProvider);
+        final isPlaylist = info.isPlaylist && info.entries.isNotEmpty;
+        if (settings.instantGrab && !isPlaylist) {
+          await _instantDownload(info);
+        } else {
+          await _choose(info);
+        }
       }
     });
 
     final s = ref.watch(fetchControllerProvider);
+    final settings = ref.watch(settingsProvider);
     final version = ref.watch(engineVersionProvider);
     final recent = (ref.watch(jobsProvider).value ?? const <DownloadJob>[])
         .where((j) => j.status == JobStatus.done)
@@ -174,7 +287,19 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                     busy: s.info.isLoading,
                     onFetch: _fetch,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
+                  InstantGrabBar(
+                    settings: settings,
+                    onToggleInstant: () {
+                      Haptics.selection();
+                      ref
+                          .read(settingsProvider.notifier)
+                          .update((x) => x.copyWith(instantGrab: !x.instantGrab));
+                    },
+                    onCycleMode: () => _cycleDefaultMode(settings),
+                    onPickQuality: () => _pickQuickQuality(settings),
+                  ),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -616,6 +741,116 @@ class _RecentRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Quick-Download Mode Bar on Home: toggleable Instant Grab pill plus inline
+/// mode and quality/format quick chips.
+class InstantGrabBar extends StatelessWidget {
+  const InstantGrabBar({
+    super.key,
+    required this.settings,
+    required this.onToggleInstant,
+    required this.onCycleMode,
+    required this.onPickQuality,
+  });
+
+  final AppSettings settings;
+  final VoidCallback onToggleInstant;
+  final VoidCallback onCycleMode;
+  final VoidCallback onPickQuality;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final on = settings.instantGrab;
+    final audio = settings.defaultMode == DownloadMode.audioOnly;
+    final modeLabel = switch (settings.defaultMode) {
+      DownloadMode.video => 'Video',
+      DownloadMode.videoAndAudio => 'Video + audio',
+      DownloadMode.audioOnly => 'Audio',
+      DownloadMode.subtitlesOnly => 'Subtitles',
+    };
+    final qualityLabel = audio
+        ? settings.audioFormat.toUpperCase()
+        : (settings.maxHeight == null ? 'Best' : '${settings.maxHeight}p');
+    final side = BorderSide(
+      color: on ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
+      width: on ? 1.5 : 1.0,
+    );
+    final shape = m3.shapeStyle == M3ShapeStyle.crisp
+        ? RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: side,
+          )
+        : StadiumBorder(side: side);
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Semantics(
+          button: true,
+          toggled: on,
+          label: 'Instant Grab, ${on ? 'on' : 'off'}',
+          excludeSemantics: true,
+          child: GestureDetector(
+            onTap: onToggleInstant,
+            child: AnimatedContainer(
+              duration: m3.motion.resolve(
+                context,
+                m3.motion.defaultSpatialDuration,
+              ),
+              curve: m3.motion.defaultSpatialCurve,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: ShapeDecoration(
+                color: on ? cs.primaryContainer : cs.surfaceContainerHigh,
+                shape: shape,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.bolt_rounded,
+                    size: 18,
+                    color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Instant Grab',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: on ? FontWeight.w800 : FontWeight.w700,
+                      color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        ActionChip(
+          avatar: Icon(
+            audio ? Icons.music_note_rounded : Icons.videocam_rounded,
+            size: 17,
+            color: cs.onSecondaryContainer,
+          ),
+          label: Text(modeLabel),
+          onPressed: onCycleMode,
+        ),
+        ActionChip(
+          avatar: Icon(
+            audio ? Icons.graphic_eq_rounded : Icons.hd_rounded,
+            size: 17,
+            color: cs.onSecondaryContainer,
+          ),
+          label: Text(qualityLabel),
+          onPressed: onPickQuality,
+        ),
+      ],
     );
   }
 }

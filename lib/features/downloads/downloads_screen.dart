@@ -6,11 +6,13 @@ import 'package:path/path.dart' as p;
 
 import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
+import '../../core/utils/haptics.dart';
 import '../../core/widgets/dock_inset.dart';
 import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
+import '../../core/widgets/toasts.dart';
 import '../../data/db/app_database.dart';
 import '../../data/engine/media_info.dart';
 import '../../data/repositories/download_repository.dart';
@@ -330,19 +332,93 @@ class _JobCard extends ConsumerWidget {
       ),
     );
 
+    final inner = active
+        ? card
+        : Morph(
+            color: cs.surfaceContainerLow,
+            page: (_) => DownloadDetailScreen(jobId: job.id),
+            builder: (context, open) => GestureDetector(
+              onTap: open,
+              behavior: HitTestBehavior.opaque,
+              child: card,
+            ),
+          );
+
+    final (rightLabel, rightIcon, rightBg, rightFg) = switch (job.status) {
+      JobStatus.running ||
+      JobStatus.queued ||
+      JobStatus.waiting => (
+        'Pause',
+        Icons.pause_rounded,
+        cs.secondaryContainer,
+        cs.onSecondaryContainer,
+      ),
+      JobStatus.paused => (
+        'Resume',
+        Icons.play_arrow_rounded,
+        cs.primaryContainer,
+        cs.onPrimaryContainer,
+      ),
+      JobStatus.failed || JobStatus.canceled => (
+        'Retry',
+        Icons.refresh_rounded,
+        cs.primaryContainer,
+        cs.onPrimaryContainer,
+      ),
+      JobStatus.done => (
+        'Details',
+        Icons.open_in_new_rounded,
+        cs.tertiaryContainer,
+        cs.onTertiaryContainer,
+      ),
+    };
+
+    final (leftLabel, leftIcon) = active
+        ? ('Cancel', Icons.close_rounded)
+        : ('Remove', Icons.delete_sweep_rounded);
+
     final tappable = Padding(
       padding: EdgeInsets.only(bottom: m3.listGap),
-      child: active
-          ? card
-          : Morph(
-              color: cs.surfaceContainerLow,
-              page: (_) => DownloadDetailScreen(jobId: job.id),
-              builder: (context, open) => GestureDetector(
-                onTap: open,
-                behavior: HitTestBehavior.opaque,
-                child: card,
-              ),
-            ),
+      child: _SwipeableJobCard(
+        jobId: job.id,
+        rightLabel: rightLabel,
+        rightIcon: rightIcon,
+        rightBg: rightBg,
+        rightFg: rightFg,
+        leftLabel: leftLabel,
+        leftIcon: leftIcon,
+        leftBg: cs.errorContainer,
+        leftFg: cs.onErrorContainer,
+        onSwipeRight: () {
+          switch (job.status) {
+            case JobStatus.running || JobStatus.queued || JobStatus.waiting:
+              repo.pause(job.id);
+            case JobStatus.paused:
+              repo.unpause(job.id);
+            case JobStatus.failed || JobStatus.canceled:
+              repo.retry(job.id);
+            case JobStatus.done:
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => DownloadDetailScreen(jobId: job.id),
+                ),
+              );
+          }
+        },
+        onSwipeLeft: () {
+          if (active) {
+            repo.cancel(job.id);
+          } else {
+            repo.remove(job.id);
+            popToast(
+              'Removed from history',
+              icon: Icons.delete_sweep_rounded,
+              context: context,
+            );
+          }
+        },
+        child: inner,
+      ),
     );
     return still
         ? tappable
@@ -360,6 +436,150 @@ class _JobCard extends ConsumerWidget {
   }
 
   static String _eta(int s) => s >= 60 ? '${s ~/ 60}m ${s % 60}s' : '${s}s';
+}
+
+class _SwipeableJobCard extends StatefulWidget {
+  const _SwipeableJobCard({
+    required this.jobId,
+    required this.rightLabel,
+    required this.rightIcon,
+    required this.rightBg,
+    required this.rightFg,
+    required this.leftLabel,
+    required this.leftIcon,
+    required this.leftBg,
+    required this.leftFg,
+    required this.onSwipeRight,
+    required this.onSwipeLeft,
+    required this.child,
+  });
+
+  final String jobId;
+  final String rightLabel;
+  final IconData rightIcon;
+  final Color rightBg;
+  final Color rightFg;
+  final String leftLabel;
+  final IconData leftIcon;
+  final Color leftBg;
+  final Color leftFg;
+  final VoidCallback onSwipeRight;
+  final VoidCallback onSwipeLeft;
+  final Widget child;
+
+  @override
+  State<_SwipeableJobCard> createState() => _SwipeableJobCardState();
+}
+
+class _SwipeableJobCardState extends State<_SwipeableJobCard> {
+  var _reached = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final m3 = context.m3;
+    return ClipRRect(
+      borderRadius: m3.cardRadius,
+      child: Dismissible(
+        key: ValueKey('swipe-${widget.jobId}'),
+        dismissThresholds: const {
+          DismissDirection.startToEnd: 0.28,
+          DismissDirection.endToStart: 0.28,
+        },
+        movementDuration: m3.motion.resolve(
+          context,
+          m3.motion.defaultSpatialDuration,
+        ),
+        onUpdate: (details) {
+          if (details.reached && !_reached) {
+            _reached = true;
+            Haptics.selection();
+          } else if (!details.reached && _reached) {
+            _reached = false;
+          }
+        },
+        confirmDismiss: (direction) async {
+          _reached = false;
+          Haptics.medium();
+          if (direction == DismissDirection.startToEnd) {
+            widget.onSwipeRight();
+          } else if (direction == DismissDirection.endToStart) {
+            widget.onSwipeLeft();
+          }
+          // Returning false lets Drift's stream update or remove the item cleanly.
+          return false;
+        },
+        background: _SwipeReveal(
+          alignment: Alignment.centerLeft,
+          color: widget.rightBg,
+          foreground: widget.rightFg,
+          icon: widget.rightIcon,
+          label: widget.rightLabel,
+        ),
+        secondaryBackground: _SwipeReveal(
+          alignment: Alignment.centerRight,
+          color: widget.leftBg,
+          foreground: widget.leftFg,
+          icon: widget.leftIcon,
+          label: widget.leftLabel,
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _SwipeReveal extends StatelessWidget {
+  const _SwipeReveal({
+    required this.alignment,
+    required this.color,
+    required this.foreground,
+    required this.icon,
+    required this.label,
+  });
+
+  final Alignment alignment;
+  final Color color;
+  final Color foreground;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLeft = alignment == Alignment.centerLeft;
+    return Container(
+      color: color,
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isLeft) ...[
+            Icon(icon, color: foreground, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+          ] else ...[
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(icon, color: foreground, size: 22),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Pause/Resume while active, organic cookie9 completion badge when done, retry on failure.

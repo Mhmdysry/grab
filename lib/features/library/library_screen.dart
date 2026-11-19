@@ -15,6 +15,7 @@ import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
+import '../../data/engine/media_info.dart';
 import '../detail/download_detail_screen.dart';
 import 'library_items.dart';
 import 'player_screen.dart';
@@ -192,6 +193,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
     // Drop picks for files that disappeared.
     _picked.removeWhere((p) => !all.any((i) => i.path == p));
+    final totalBytes = all.fold<int>(0, (sum, i) => sum + _size(i.path));
+    final storageLabel =
+        '${all.length} ${all.length == 1 ? 'file' : 'files'} · ${formatBytes(totalBytes) ?? '0 B'}';
+    final cs = context.cs;
 
     // Back leaves selection mode first.
     return PopScope(
@@ -208,7 +213,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 SliverAppBar(
                   pinned: true,
                   automaticallyImplyLeading: false,
-                  backgroundColor: context.cs.surfaceContainer,
+                  backgroundColor: cs.surfaceContainer,
                   surfaceTintColor: Colors.transparent,
                   toolbarHeight: 64,
                   titleSpacing: 16,
@@ -244,6 +249,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
                 sliver: SliverList.list(
                   children: [
+                    if (all.isNotEmpty) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: PopTag(
+                          storageLabel,
+                          color: cs.secondaryContainer,
+                          foreground: cs.onSecondaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     TextField(
                       controller: _search,
                       onChanged: (v) => setState(() => _query = v),
@@ -529,6 +545,48 @@ class _Tile extends ConsumerWidget {
                               ),
                             ),
                     ),
+                    if (!selecting && !subs)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Tooltip(
+                          message: 'Quick play',
+                          child: Semantics(
+                            button: true,
+                            label: 'Quick play ${item.title}',
+                            excludeSemantics: true,
+                            child: GestureDetector(
+                              onTap: () {
+                                Haptics.light();
+                                openPlayer(context, item);
+                              },
+                              child: Container(
+                                width: compact ? 30 : 36,
+                                height: compact ? 30 : 36,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.24,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: compact ? 19 : 22,
+                                  color: cs.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

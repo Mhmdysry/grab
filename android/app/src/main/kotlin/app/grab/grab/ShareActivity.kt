@@ -2,11 +2,15 @@ package app.grab.grab
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs
+import io.flutter.embedding.android.RenderMode
+import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
@@ -17,6 +21,10 @@ import java.lang.ref.WeakReference
 /**
  * Translucent floating overlay Activity for ACTION_SEND shares.
  *
+ * Uses `RenderMode.texture` + `TransparencyMode.transparent` inside the caller's
+ * task stack (standard launchMode) so the source app (YouTube/TikTok/Browser)
+ * remains live and visible behind the dimmed scrim with zero special permissions.
+ *
  * Uses a process-wide cached [FlutterEngine] (`grab_share_engine`) running the
  * `shareMain` Dart entrypoint with `shouldDestroyEngineWithHost() = false`, so:
  * 1) downloads queued from the share card continue cleanly in the background
@@ -25,6 +33,10 @@ import java.lang.ref.WeakReference
  * 2) subsequent shares open nearly instantaneously.
  */
 class ShareActivity : FlutterActivity() {
+    override fun getRenderMode(): RenderMode = RenderMode.texture
+
+    override fun getTransparencyMode(): TransparencyMode = TransparencyMode.transparent
+
     override fun getBackgroundMode(): FlutterActivityLaunchConfigs.BackgroundMode =
         FlutterActivityLaunchConfigs.BackgroundMode.transparent
 
@@ -39,24 +51,26 @@ class ShareActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         val hadEngine = FlutterEngineCache.getInstance().get(ENGINE_ID) != null
         val text = extractSharedText(intent)
         if (!hadEngine) pendingSharedText = text
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         activeActivity = WeakReference(this)
         suppressTransition(isOpen = true)
-        if (hadEngine && text != null) {
+        if (hadEngine) {
             pendingSharedText = null
-            shareChannel?.invokeMethod("sharedText", text)
+            shareChannel?.invokeMethod("sharedText", text ?: "")
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val text = extractSharedText(intent) ?: return
+        val text = extractSharedText(intent)
         pendingSharedText = null
-        shareChannel?.invokeMethod("sharedText", text)
+        shareChannel?.invokeMethod("sharedText", text ?: "")
     }
 
     override fun onDestroy() {

@@ -10,6 +10,7 @@ import 'package:grab/core/widgets/pop_widgets.dart';
 import 'package:grab/data/engine/media_info.dart';
 import 'package:grab/data/settings/app_settings.dart';
 import 'package:grab/features/home/fetch_controller.dart';
+import 'package:grab/features/home/home_screen.dart';
 import 'package:grab/features/share/share_overlay_app.dart';
 
 void main() {
@@ -617,5 +618,279 @@ void main() {
         expect(find.text('1.42 GB'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'ExpressiveFloatingNavBar keeps equal-width stacked labels stationary and morphs orb polygons',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final theme = buildExpressiveTheme(
+          const AppSettings(
+            motionPreset: M3MotionPreset.off,
+            navStyle: M3NavStyle.floatingPill,
+            fontScale: 1.2,
+          ),
+          brightness: Brightness.light,
+        );
+
+        var selected = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.2)),
+              child: child!,
+            ),
+            home: StatefulBuilder(
+              builder: (context, setState) => Scaffold(
+                body: const SizedBox.expand(),
+                bottomNavigationBar: ExpressiveFloatingNavBar(
+                  index: selected,
+                  onChanged: (i) => setState(() => selected = i),
+                  tabs: const [
+                    PopTab(
+                      Icons.home_outlined,
+                      'Home',
+                      activeIcon: Icons.home_rounded,
+                    ),
+                    PopTab(
+                      Icons.download_outlined,
+                      'Downloads',
+                      activeIcon: Icons.download_rounded,
+                      badge: 2,
+                    ),
+                    PopTab(
+                      Icons.video_library_outlined,
+                      'Library',
+                      activeIcon: Icons.video_library_rounded,
+                    ),
+                    PopTab(
+                      Icons.tune_outlined,
+                      'Settings',
+                      activeIcon: Icons.tune_rounded,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        // All 4 stacked labels remain simultaneously visible.
+        expect(find.text('Home'), findsOneWidget);
+        expect(find.text('Downloads'), findsOneWidget);
+        expect(find.text('Library'), findsOneWidget);
+        expect(find.text('Settings'), findsOneWidget);
+
+        final homeXBefore = tester.getCenter(find.text('Home')).dx;
+        final libraryXBefore = tester.getCenter(find.text('Library')).dx;
+        final settingsXBefore = tester.getCenter(find.text('Settings')).dx;
+
+        await tester.tap(find.text('Downloads'));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(selected, 1);
+
+        // Equal-width stacked tabs must never shift sibling X coordinates.
+        expect(tester.getCenter(find.text('Home')).dx, closeTo(homeXBefore, 0.5));
+        expect(
+          tester.getCenter(find.text('Library')).dx,
+          closeTo(libraryXBefore, 0.5),
+        );
+        expect(
+          tester.getCenter(find.text('Settings')).dx,
+          closeTo(settingsXBefore, 0.5),
+        );
+      },
+    );
+
+    testWidgets(
+      'ExpressiveTabStack transitions cleanly between tabs and preserves child state',
+      (tester) async {
+        final theme = buildExpressiveTheme(
+          const AppSettings(motionPreset: M3MotionPreset.expressive),
+          brightness: Brightness.light,
+        );
+        var tab = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: StatefulBuilder(
+              builder: (context, setState) => Scaffold(
+                body: ExpressiveTabStack(
+                  index: tab,
+                  children: const [
+                    Center(child: _StatefulCounter()),
+                    Center(child: Text('Tab One')),
+                    Center(child: Text('Tab Two')),
+                  ],
+                ),
+                floatingActionButton: FloatingActionButton(
+                  onPressed: () => setState(() => tab = (tab + 1) % 3),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Tab Zero: 0'));
+        await tester.pump();
+        expect(find.text('Tab Zero: 1'), findsOneWidget);
+
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 120));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(tab, 1);
+        expect(find.text('Tab One'), findsOneWidget);
+        expect(find.text('Tab Zero: 1'), findsNothing);
+
+        // Switch through Tab Two and back to Tab Zero; state must remain intact.
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Tab Two'), findsOneWidget);
+
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Tab Zero: 1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'InstantGrabBar and ShareOverlayCard bubble prompt render without overflow at 360dp / 1.2x',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final theme = buildExpressiveTheme(
+          const AppSettings(
+            motionPreset: M3MotionPreset.off,
+            fontScale: 1.2,
+          ),
+          brightness: Brightness.dark,
+        );
+
+        var instant = false;
+        var modeCycled = false;
+        var qualityPicked = false;
+        var bubbleEnabled = false;
+        var bubbleDismissed = false;
+
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              theme: theme,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.2)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    StatefulBuilder(
+                      builder: (context, setState) => InstantGrabBar(
+                        settings: AppSettings(instantGrab: instant),
+                        onToggleInstant: () =>
+                            setState(() => instant = !instant),
+                        onCycleMode: () => modeCycled = true,
+                        onPickQuality: () => qualityPicked = true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ShareOverlayCard(
+                      phase: ShareCardPhase.ready,
+                      fetchState: const FetchState(
+                        info: AsyncData(
+                          MediaInfo(
+                            url: 'https://example.com/v',
+                            title: 'Sample Video',
+                            site: 'YouTube',
+                          ),
+                        ),
+                      ),
+                      settings: const AppSettings(),
+                      showBubblePrompt: true,
+                      onEnableBubble: () => bubbleEnabled = true,
+                      onDismissBubblePrompt: () => bubbleDismissed = true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(InstantGrabBar),
+            matching: find.text('Instant Grab'),
+          ),
+        );
+        await tester.pump();
+        expect(instant, isTrue);
+
+        await tester.tap(
+          find.descendant(
+            of: find.byType(InstantGrabBar),
+            matching: find.text('Video'),
+          ),
+        );
+        expect(modeCycled, isTrue);
+
+        await tester.tap(
+          find.descendant(
+            of: find.byType(InstantGrabBar),
+            matching: find.text('Best'),
+          ),
+        );
+        expect(qualityPicked, isTrue);
+
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ShareOverlayCard),
+            matching: find.text('Turn on'),
+          ),
+        );
+        expect(bubbleEnabled, isTrue);
+
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ShareOverlayCard),
+            matching: find.byTooltip('Dismiss'),
+          ),
+        );
+        expect(bubbleDismissed, isTrue);
+      },
+    );
   });
+}
+
+class _StatefulCounter extends StatefulWidget {
+  const _StatefulCounter();
+
+  @override
+  State<_StatefulCounter> createState() => _StatefulCounterState();
+}
+
+class _StatefulCounterState extends State<_StatefulCounter> {
+  var _count = 0;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: () => setState(() => _count++),
+    child: Text('Tab Zero: $_count'),
+  );
 }

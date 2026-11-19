@@ -24,6 +24,9 @@ class DesktopEngine implements Engine {
   @override
   Stream<EngineEvent> get events => _events.stream;
 
+  @override
+  Future<List<String>> activeIds() async => _running.keys.toList();
+
   static bool get _win => Platform.isWindows;
   String get _ytdlp => p.join(_bin.path, _win ? 'yt-dlp.exe' : 'yt-dlp');
 

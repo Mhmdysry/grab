@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -11,7 +10,7 @@ import 'pop_theme.dart';
 /// In-memory LRU cache for extracted artwork seed colors.
 abstract final class ArtworkColorCache {
   static const _maxEntries = 64;
-  static final _entries = LinkedHashMap<String, Color>();
+  static final _entries = <String, Color>{};
 
   static Color? get(String key) {
     final c = _entries.remove(key);

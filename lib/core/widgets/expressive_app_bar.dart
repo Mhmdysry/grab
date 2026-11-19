@@ -60,7 +60,7 @@ class ExpressiveScrollBehavior extends MaterialScrollBehavior {
     Widget child,
     ScrollableDetails details,
   ) => StretchingOverscrollIndicator(
-    axisDirection: details.axisDirection,
+    axisDirection: details.direction,
     child: child,
   );
 

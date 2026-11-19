@@ -31,7 +31,7 @@ class DownloadsScreen extends ConsumerWidget {
     final waiting = all.where((j) => j.status == JobStatus.queued).length;
     final paused = all.where((j) => j.status == JobStatus.paused).length;
     final offline = all.where((j) => j.status == JobStatus.waiting).length;
-    final active = all.where((j) => _isActive(j.status)).toList();
+    final active = all.where((j) => isActiveJobStatus(j.status)).toList();
     final history = all.where((j) => !active.contains(j)).toList();
     final summary = active.isEmpty
         ? 'Nothing running'
@@ -109,12 +109,16 @@ class DownloadsScreen extends ConsumerWidget {
                               'Paste a link on Home, or share one to Grab from TikTok, YouTube or Pinterest.',
                         ),
                       for (final (i, j) in active.indexed)
-                        _JobCard(key: ValueKey(j.id), job: j, index: i),
+                        DownloadJobCard(
+                          key: ValueKey(j.id),
+                          job: j,
+                          index: i,
+                        ),
                       if (history.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         const PopSection('History'),
                         for (final (i, j) in history.indexed)
-                          _JobCard(
+                          DownloadJobCard(
                             key: ValueKey(j.id),
                             job: j,
                             index: active.length + i,
@@ -132,17 +136,23 @@ class DownloadsScreen extends ConsumerWidget {
   }
 }
 
-bool _isActive(JobStatus s) =>
+bool isActiveJobStatus(JobStatus s) =>
     s == JobStatus.running ||
     s == JobStatus.queued ||
     s == JobStatus.paused ||
     s == JobStatus.waiting;
 
-class _JobCard extends ConsumerWidget {
-  const _JobCard({super.key, required this.job, required this.index});
+class DownloadJobCard extends ConsumerWidget {
+  const DownloadJobCard({
+    super.key,
+    required this.job,
+    required this.index,
+    this.highlighted = false,
+  });
 
   final DownloadJob job;
   final int index;
+  final bool highlighted;
 
   DownloadMode get _mode => DownloadMode.values.byName(job.mode);
 
@@ -169,7 +179,7 @@ class _JobCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(downloadRepositoryProvider);
     final files = job.paths.isEmpty ? const <String>[] : job.paths.split('\n');
-    final active = _isActive(job.status);
+    final active = isActiveJobStatus(job.status);
     final isRunning = job.status == JobStatus.running;
     final pct = job.progress.toStringAsFixed(0);
     final m3 = context.m3;
@@ -199,7 +209,9 @@ class _JobCard extends ConsumerWidget {
         ? cs.onPrimaryContainer.withValues(alpha: 0.75)
         : cs.onSurfaceVariant;
 
-    final card = Container(
+    final card = AnimatedContainer(
+      duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
+      curve: m3.motion.defaultSpatialCurve,
       padding: EdgeInsets.fromLTRB(
         m3.cardPad - 2,
         m3.cardPad - 2,
@@ -209,6 +221,10 @@ class _JobCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: m3.cardRadius,
+        border: Border.all(
+          color: highlighted ? cs.primary : Colors.transparent,
+          width: highlighted ? 2.2 : 0.0,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -27,7 +27,6 @@ void main() {
     expect(s.confettiEnabled, isTrue);
     expect(s.artworkTinting, isTrue);
     expect(s.shareKeepOpen, isFalse);
-    expect(s.floatingBubbleEnabled, isTrue);
     expect(s.instantGrab, isFalse);
   });
 
@@ -56,7 +55,6 @@ void main() {
       confettiEnabled: false,
       artworkTinting: false,
       shareKeepOpen: true,
-      floatingBubbleEnabled: false,
       instantGrab: true,
     ).save(p);
     final s = AppSettings.load(p);
@@ -81,7 +79,6 @@ void main() {
     expect(s.confettiEnabled, isFalse);
     expect(s.artworkTinting, isFalse);
     expect(s.shareKeepOpen, isTrue);
-    expect(s.floatingBubbleEnabled, isFalse);
     expect(s.instantGrab, isTrue);
   });
 
@@ -130,7 +127,6 @@ void main() {
       hapticsEnabled: false,
       artworkTinting: false,
       shareKeepOpen: true,
-      floatingBubbleEnabled: false,
       instantGrab: true,
     );
     final reset = custom.resetAppearance();
@@ -145,7 +141,6 @@ void main() {
     expect(reset.hapticsEnabled, isTrue);
     expect(reset.artworkTinting, isTrue);
     expect(reset.shareKeepOpen, isTrue);
-    expect(reset.floatingBubbleEnabled, isFalse);
     expect(reset.instantGrab, isTrue);
   });
 

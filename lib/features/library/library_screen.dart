@@ -297,23 +297,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 child: Text(s.label),
                               ),
                           ],
-                          child: Chip(
-                            avatar: const Icon(Icons.sort_rounded, size: 18),
-                            label: Text(_sort.label),
-                            labelStyle: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: context.pop.text,
+                          child: IgnorePointer(
+                            child: ExpressivePillChip(
+                              icon: Icons.sort_rounded,
+                              label: _sort.label,
+                              selected: false,
+                              onTap: () {},
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        FilterChip(
-                          avatar: _group
-                              ? null
-                              : const Icon(Icons.workspaces_rounded, size: 18),
-                          label: const Text('By platform'),
+                        ExpressivePillChip(
+                          icon: Icons.workspaces_rounded,
+                          label: 'By platform',
                           selected: _group,
-                          onSelected: _setGroup,
+                          showCheckmark: true,
+                          onTap: () => _setGroup(!_group),
                         ),
                       ],
                     ),

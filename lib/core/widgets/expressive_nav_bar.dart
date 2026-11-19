@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
@@ -9,14 +10,24 @@ import 'expressive_shapes.dart';
 import 'morph.dart';
 import 'pop_widgets.dart';
 
+/// Distinct selection animations for tabs in [ExpressiveFloatingNavBar].
+enum PopTabAnimation { homeHop, libraryCascade, settingsSpin }
+
 /// One tab in [PopTabBar] / [ExpressiveFloatingNavBar].
 class PopTab {
-  const PopTab(this.icon, this.label, {this.activeIcon, this.badge = 0});
+  const PopTab(
+    this.icon,
+    this.label, {
+    this.activeIcon,
+    this.badge = 0,
+    this.animation = PopTabAnimation.homeHop,
+  });
 
   final IconData icon;
   final IconData? activeIcon;
   final String label;
   final int badge;
+  final PopTabAnimation animation;
 }
 
 /// Live companion orb state for the right-hand detached Companion Orb.
@@ -26,6 +37,7 @@ class PopDockOrb {
     this.playingSeed,
     this.playingThumbUrl,
     this.isPlaying = false,
+    this.playingProgress,
     this.playingPageBuilder,
     this.onOpenPlayer,
     this.onTogglePlay,
@@ -39,6 +51,9 @@ class PopDockOrb {
   final String? playingSeed;
   final String? playingThumbUrl;
   final bool isPlaying;
+
+  /// `0.0..1.0` audio playback progress ratio (`position / duration`).
+  final double? playingProgress;
   final WidgetBuilder? playingPageBuilder;
   final VoidCallback? onOpenPlayer;
   final VoidCallback? onTogglePlay;
@@ -84,6 +99,7 @@ class PopTabBar extends StatelessWidget {
     final m3 = context.m3;
     return NavigationBar(
       selectedIndex: index,
+      labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
       animationDuration: m3.motion.resolve(
         context,
         m3.motion.defaultSpatialDuration,
@@ -208,12 +224,12 @@ class PopTabBar extends StatelessWidget {
   }
 }
 
-/// From-scratch Material 3 Expressive Stacked Floating Navigation Bar +
-/// Shape-Morphing Companion Orb.
+/// Koda-Style Material 3 Expressive Floating Navigation Bar +
+/// Spinning & Shape-Morphing Companion Orb.
 ///
-/// Equal-width slots guarantee siblings never shift horizontally, while the
-/// active indicator pill springs open beneath the icon and the label sits crisply
-/// underneath.
+/// Unselected tabs show only their icon; the selected tab expands into a
+/// horizontal pill with `[Icon + Label]` side-by-side and triggers a
+/// tab-specific M3 Expressive animation.
 class ExpressiveFloatingNavBar extends StatelessWidget {
   const ExpressiveFloatingNavBar({
     super.key,
@@ -238,7 +254,7 @@ class ExpressiveFloatingNavBar extends StatelessWidget {
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: SizedBox(
-        height: 68,
+        height: 64,
         child: Row(
           children: [
             Expanded(
@@ -254,37 +270,35 @@ class ExpressiveFloatingNavBar extends StatelessWidget {
                   shadows: [
                     BoxShadow(
                       color: Colors.black.withValues(
-                        alpha: isDark ? 0.30 : 0.09,
+                        alpha: isDark ? 0.34 : 0.10,
                       ),
-                      blurRadius: 20,
+                      blurRadius: 22,
                       offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 6,
+                    horizontal: 8,
+                    vertical: 7,
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (var i = 0; i < tabs.length; i++)
-                        Expanded(
-                          flex: 1,
-                          child: _StackedNavTab(
-                            tab: tabs[i],
-                            tabIndex: i,
-                            selected: i == index,
-                            onTap: () => onChanged(i),
-                          ),
+                        _KodaNavTab(
+                          tab: tabs[i],
+                          tabIndex: i,
+                          selected: i == index,
+                          onTap: () => onChanged(i),
                         ),
                     ],
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             _MorphingCompanionOrb(orb: orb),
           ],
         ),
@@ -293,8 +307,8 @@ class ExpressiveFloatingNavBar extends StatelessWidget {
   }
 }
 
-class _StackedNavTab extends StatefulWidget {
-  const _StackedNavTab({
+class _KodaNavTab extends StatefulWidget {
+  const _KodaNavTab({
     required this.tab,
     required this.tabIndex,
     required this.selected,
@@ -307,20 +321,22 @@ class _StackedNavTab extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_StackedNavTab> createState() => _StackedNavTabState();
+  State<_KodaNavTab> createState() => _KodaNavTabState();
 }
 
-class _StackedNavTabState extends State<_StackedNavTab>
+class _KodaNavTabState extends State<_KodaNavTab>
     with SingleTickerProviderStateMixin {
   late final AnimationController _impulse = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 280),
+    duration: const Duration(milliseconds: 420),
   );
 
   @override
-  void didUpdateWidget(_StackedNavTab old) {
+  void didUpdateWidget(_KodaNavTab old) {
     super.didUpdateWidget(old);
-    if (!old.selected && widget.selected && !context.m3.motion.reduced(context)) {
+    if (!old.selected &&
+        widget.selected &&
+        !context.m3.motion.reduced(context)) {
       _impulse.forward(from: 0.0);
     }
   }
@@ -340,17 +356,113 @@ class _StackedNavTabState extends State<_StackedNavTab>
     widget.onTap();
   }
 
+  Widget _buildAnimatedIcon(
+    BuildContext context, {
+    required IconData iconData,
+    required Color color,
+    required bool still,
+  }) {
+    final baseIcon = Icon(
+      iconData,
+      key: ValueKey(iconData),
+      size: 22,
+      color: color,
+    );
+
+    return AnimatedBuilder(
+      animation: _impulse,
+      builder: (context, child) {
+        final t = still ? 0.0 : _impulse.value;
+        if (t <= 0.0001) return child!;
+
+        switch (widget.tab.animation) {
+          case PopTabAnimation.homeHop:
+            final wave = math.sin(t * math.pi);
+            final tiltSign = widget.tabIndex.isEven ? -1.0 : 1.0;
+            return Transform.translate(
+              offset: Offset(0, -3.2 * wave),
+              child: Transform.rotate(
+                angle: tiltSign * 0.035 * math.pi * 2 * wave,
+                child: child,
+              ),
+            );
+
+          case PopTabAnimation.libraryCascade:
+            final wave = math.sin(t * math.pi);
+            final rock = math.sin(t * math.pi * 2);
+            final scale = 1.0 + 0.20 * wave;
+            return Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                if (wave > 0.04)
+                  Transform.translate(
+                    offset: Offset(-4.5 * wave, 2.8 * wave),
+                    child: Transform.rotate(
+                      angle: -0.16 * wave,
+                      child: Opacity(
+                        opacity: (0.40 * wave).clamp(0.0, 1.0),
+                        child: Icon(
+                          iconData,
+                          size: 20,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ),
+                Transform.translate(
+                  offset: Offset(1.5 * wave, -3.0 * wave),
+                  child: Transform.rotate(
+                    angle: 0.11 * rock,
+                    child: Transform.scale(
+                      scale: scale,
+                      child: child,
+                    ),
+                  ),
+                ),
+              ],
+            );
+
+          case PopTabAnimation.settingsSpin:
+            // Damped 270° circular gear spin with spring overshoot.
+            final spinT = Curves.easeOutBack.transform(t.clamp(0.0, 1.0));
+            final pulse = 1.0 + 0.14 * math.sin(t * math.pi);
+            return Transform.scale(
+              scale: pulse,
+              child: Transform.rotate(
+                angle: spinT * math.pi * 1.5,
+                child: child,
+              ),
+            );
+        }
+      },
+      child: Badge(
+        isLabelVisible: widget.tab.badge > 0,
+        backgroundColor: context.cs.error,
+        textColor: context.cs.onError,
+        label: Text('${widget.tab.badge}'),
+        child: AnimatedSwitcher(
+          duration: context.m3.motion.resolve(
+            context,
+            context.m3.motion.fastEffectsDuration,
+          ),
+          child: baseIcon,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = context.cs;
     final m3 = context.m3;
     final still = m3.motion.reduced(context);
     final on = widget.selected;
-    final iconData = on ? (widget.tab.activeIcon ?? widget.tab.icon) : widget.tab.icon;
-    final pillShape = m3.shapeStyle == M3ShapeStyle.crisp
-        ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-        : const StadiumBorder();
-    final tiltSign = widget.tabIndex.isEven ? -1.0 : 1.0;
+    final iconData = on
+        ? (widget.tab.activeIcon ?? widget.tab.icon)
+        : widget.tab.icon;
+    final pillRadius = m3.shapeStyle == M3ShapeStyle.crisp ? 14.0 : 999.0;
+    final fg = on ? cs.onPrimaryContainer : cs.onSurfaceVariant;
 
     return Semantics(
       selected: on,
@@ -362,113 +474,62 @@ class _StackedNavTabState extends State<_StackedNavTab>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _handleTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(
+        child: AnimatedContainer(
+          duration: m3.motion.resolve(
+            context,
+            m3.motion.defaultSpatialDuration,
+          ),
+          curve: m3.motion.defaultSpatialCurve,
+          padding: EdgeInsets.symmetric(
+            horizontal: on ? 18 : 16,
+            vertical: 10,
+          ),
+          decoration: BoxDecoration(
+            color: on ? cs.primaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(pillRadius),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                height: 30,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    AnimatedOpacity(
-                      opacity: on ? 1.0 : 0.0,
-                      duration: m3.motion.resolve(
-                        context,
-                        m3.motion.fastEffectsDuration,
-                      ),
-                      curve: m3.motion.effectsCurve,
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(end: on ? 1.0 : 0.35),
-                        duration: still
-                            ? Duration.zero
-                            : m3.motion.defaultSpatialDuration,
-                        curve: m3.motion.defaultSpatialCurve,
-                        builder: (_, scaleX, child) => Transform.scale(
-                          scaleX: scaleX.clamp(0.05, 1.25),
-                          scaleY: 1.0,
-                          child: child,
-                        ),
-                        child: Container(
-                          width: 54,
-                          height: 30,
-                          decoration: ShapeDecoration(
-                            color: cs.primaryContainer,
-                            shape: pillShape,
-                          ),
-                        ),
-                      ),
-                    ),
-                    AnimatedBuilder(
-                      animation: _impulse,
-                      builder: (_, child) {
-                        final wave = still
-                            ? 0.0
-                            : math.sin(_impulse.value * math.pi);
-                        return Transform.translate(
-                          offset: Offset(0, -2.5 * wave),
-                          child: Transform.rotate(
-                            angle: tiltSign * 0.03 * math.pi * 2 * wave,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Badge(
-                        isLabelVisible: widget.tab.badge > 0,
-                        backgroundColor: cs.error,
-                        textColor: cs.onError,
-                        label: Text('${widget.tab.badge}'),
-                        child: AnimatedScale(
-                          scale: on ? 1.08 : 1.0,
-                          duration: m3.motion.resolve(
-                            context,
-                            m3.motion.fastSpatialDuration,
-                          ),
-                          curve: m3.motion.fastSpatialCurve,
-                          child: AnimatedSwitcher(
-                            duration: m3.motion.resolve(
-                              context,
-                              m3.motion.fastEffectsDuration,
-                            ),
-                            child: Icon(
-                              iconData,
-                              key: ValueKey(iconData),
-                              size: 21,
-                              color: on
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _buildAnimatedIcon(
+                context,
+                iconData: iconData,
+                color: fg,
+                still: still,
               ),
-              const SizedBox(height: 3),
-              Expanded(
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: AnimatedDefaultTextStyle(
-                      duration: m3.motion.resolve(
-                        context,
-                        m3.motion.fastEffectsDuration,
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(end: on ? 1.0 : 0.0),
+                duration: still
+                    ? Duration.zero
+                    : m3.motion.defaultSpatialDuration,
+                curve: m3.motion.defaultSpatialCurve,
+                builder: (context, t, child) {
+                  final clamped = t.clamp(0.0, 1.0);
+                  if (clamped <= 0.01) return const SizedBox.shrink();
+                  return ClipRect(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: clamped,
+                      child: Opacity(
+                        opacity: clamped,
+                        child: child,
                       ),
-                      curve: m3.motion.effectsCurve,
-                      style: TextStyle(
-                        fontFamily: Pop.font,
-                        fontSize: 11,
-                        height: 1.1,
-                        fontWeight: on ? FontWeight.w800 : FontWeight.w600,
-                        color: on ? cs.onSurface : cs.onSurfaceVariant,
-                      ),
-                      child: Text(
-                        widget.tab.label,
-                        maxLines: 1,
-                        softWrap: false,
-                      ),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    widget.tab.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontFamily: Pop.font,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onPrimaryContainer,
+                      letterSpacing: -0.1,
                     ),
                   ),
                 ),
@@ -483,12 +544,17 @@ class _StackedNavTabState extends State<_StackedNavTab>
 
 enum _OrbState { idle, downloads, playing }
 
-/// Detached Shape-Morphing Companion Orb (`60×60dp`).
+/// Detached Koda-Style Shape-Morphing & Spinning Companion Orb (`64×64dp`).
 ///
-/// Morphs its actual [ExpressivePolygonBorder] geometry between:
 /// - **Idle** → `ExpressivePolygon.squircle` (`tertiaryContainer`, Paste & Grab)
-/// - **Active Downloads** → `ExpressivePolygon.circle` (`surfaceContainerHigh` + radial arc)
-/// - **Playing Audio** → `ExpressivePolygon.cookie9` (rotating scalloped badge + track art)
+/// - **Active Downloads** → cycles & spins through Material 3 polygons while
+///   painting a fixed-orientation progress border starting from 12 o'clock.
+/// - **Playing Audio** → cycles & spins through Material 3 polygons while
+///   spinning the full-bleed album art inside the shape; the progress border
+///   stays anchored at 12 o'clock. When paused, stops at the exact last
+///   Material shape and rotation angle.
+///   - Single tap: play / pause
+///   - Long press: open full player
 class _MorphingCompanionOrb extends StatefulWidget {
   const _MorphingCompanionOrb({required this.orb});
 
@@ -500,13 +566,23 @@ class _MorphingCompanionOrb extends StatefulWidget {
 
 class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
     with TickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
+  static const List<ExpressivePolygon> _cycleShapes = [
+    ExpressivePolygon.clover4,
+    ExpressivePolygon.cookie6,
+    ExpressivePolygon.squircle,
+    ExpressivePolygon.cookie9,
+    ExpressivePolygon.cookie12,
+    ExpressivePolygon.arch,
+  ];
+
+  late final AnimationController _morphSpin = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  );
+
+  late final AnimationController _indeterminateSweep = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
-  );
-  late final AnimationController _cookieSpin = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 14),
   );
 
   _OrbState get _state {
@@ -516,26 +592,53 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
     return _OrbState.idle;
   }
 
+  /// Current `(fromPolygon, toPolygon, morphT, spinAngle)` for the orb.
+  (ExpressivePolygon, ExpressivePolygon, double, double) get _shapeMetrics {
+    final st = _state;
+    if (st == _OrbState.idle) {
+      return (
+        ExpressivePolygon.squircle,
+        ExpressivePolygon.squircle,
+        0.0,
+        0.0,
+      );
+    }
+    final v = _morphSpin.value.clamp(0.0, 1.0);
+    final scaled = v * _cycleShapes.length;
+    final idx = scaled.floor() % _cycleShapes.length;
+    final nextIdx = (idx + 1) % _cycleShapes.length;
+    final rawT = scaled - scaled.floor();
+    final morphT = Curves.easeInOutCubic.transform(rawT.clamp(0.0, 1.0));
+    // Two full rotations per 18s cycle so wrap-around at v=1.0->0.0 is seamless.
+    final spinAngle = v * math.pi * 4;
+    return (_cycleShapes[idx], _cycleShapes[nextIdx], morphT, spinAngle);
+  }
+
   void _sync() {
     if (context.m3.motion.reduced(context)) {
-      _pulse.stop();
-      _cookieSpin.stop();
+      _morphSpin.stop(canceled: false);
+      _indeterminateSweep.stop(canceled: false);
       return;
     }
     final o = widget.orb;
     final st = _state;
-    final needsPulse =
-        (st == _OrbState.playing && o.isPlaying) ||
-        (st == _OrbState.downloads && o.downloadProgress == null);
-    if (needsPulse) {
-      if (!_pulse.isAnimating) _pulse.repeat();
+    final shouldSpinAndMorph =
+        (st == _OrbState.playing && o.isPlaying) || st == _OrbState.downloads;
+    if (shouldSpinAndMorph) {
+      if (!_morphSpin.isAnimating) {
+        _morphSpin.repeat();
+      }
     } else {
-      _pulse.stop();
+      // Freeze at the exact current Material shape and rotation angle!
+      _morphSpin.stop(canceled: false);
     }
-    if (st == _OrbState.playing && o.isPlaying) {
-      if (!_cookieSpin.isAnimating) _cookieSpin.repeat();
+
+    final needsIndeterminate =
+        st == _OrbState.downloads && o.downloadProgress == null;
+    if (needsIndeterminate) {
+      if (!_indeterminateSweep.isAnimating) _indeterminateSweep.repeat();
     } else {
-      _cookieSpin.stop();
+      _indeterminateSweep.stop(canceled: false);
     }
   }
 
@@ -553,8 +656,8 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
 
   @override
   void dispose() {
-    _pulse.dispose();
-    _cookieSpin.dispose();
+    _morphSpin.dispose();
+    _indeterminateSweep.dispose();
     super.dispose();
   }
 
@@ -566,94 +669,82 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
     final o = widget.orb;
     final st = _state;
 
-    final ExpressivePolygon polygon = switch (st) {
-      _OrbState.idle => ExpressivePolygon.squircle,
-      _OrbState.downloads => ExpressivePolygon.circle,
-      _OrbState.playing => ExpressivePolygon.cookie9,
-    };
-
-    final Color bgColor = switch (st) {
-      _OrbState.idle => cs.tertiaryContainer,
-      _OrbState.downloads => cs.surfaceContainerHigh,
-      _OrbState.playing => cs.surfaceContainerHigh,
-    };
-
-    final BorderSide side = switch (st) {
-      _OrbState.idle => BorderSide(
-        color: cs.outlineVariant.withValues(alpha: 0.45),
-      ),
-      _OrbState.downloads => BorderSide.none,
-      _OrbState.playing => BorderSide(
-        color: o.isPlaying
-            ? cs.primary.withValues(alpha: 0.72)
-            : cs.outlineVariant.withValues(alpha: 0.55),
-        width: o.isPlaying ? 2.0 : 1.2,
-      ),
-    };
-
-    final Widget content = switch (st) {
-      _OrbState.idle => _buildIdleContent(context, o),
-      _OrbState.downloads => _buildDownloadsContent(context, o),
-      _OrbState.playing => _buildPlayingContent(context, o),
-    };
-
     return SizedBox(
-      width: 60,
-      height: 60,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _cookieSpin,
-              builder: (_, child) => Transform.rotate(
-                angle: st == _OrbState.playing
-                    ? _cookieSpin.value * math.pi * 2
-                    : 0.0,
-                child: child,
-              ),
-              child: AnimatedContainer(
-                duration: m3.motion.resolve(
-                  context,
-                  m3.motion.defaultSpatialDuration,
-                ),
-                curve: m3.motion.defaultSpatialCurve,
-                decoration: ShapeDecoration(
-                  color: bgColor,
-                  shape: ExpressivePolygonBorder(
-                    polygon: polygon,
-                    side: side,
+      width: 64,
+      height: 64,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_morphSpin, _indeterminateSweep]),
+        builder: (context, _) {
+          final (fromPoly, toPoly, morphT, spinAngle) = _shapeMetrics;
+          final shapeBorder = ExpressivePolygonBorder(
+            polygon: fromPoly,
+            morphTo: toPoly,
+            morphT: morphT,
+            rotation: spinAngle,
+          );
+
+          final bgColor = switch (st) {
+            _OrbState.idle => cs.tertiaryContainer,
+            _OrbState.downloads => cs.surfaceContainerHigh,
+            _OrbState.playing => cs.primaryContainer,
+          };
+
+          final double? progress = switch (st) {
+            _OrbState.idle => null,
+            _OrbState.downloads => o.downloadProgress,
+            _OrbState.playing => (o.playingProgress ?? 0.0).clamp(0.0, 1.0),
+          };
+
+          return DecoratedBox(
+            decoration: ShapeDecoration(
+              color: bgColor,
+              shape: shapeBorder,
+              shadows: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: isDark ? 0.34 : 0.10,
                   ),
-                  shadows: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.30 : 0.09,
-                      ),
-                      blurRadius: 16,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
                 ),
-              ),
+              ],
             ),
-          ),
-          AnimatedSwitcher(
-            duration: m3.motion.resolve(
-              context,
-              m3.motion.defaultSpatialDuration,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: m3.motion.resolve(
+                    context,
+                    m3.motion.defaultSpatialDuration,
+                  ),
+                  switchInCurve: m3.motion.defaultSpatialCurve,
+                  switchOutCurve: m3.motion.effectsCurve,
+                  child: switch (st) {
+                    _OrbState.idle => _buildIdleContent(context, o),
+                    _OrbState.downloads => _buildDownloadsContent(
+                      context,
+                      o,
+                      fromPoly: fromPoly,
+                      toPoly: toPoly,
+                      morphT: morphT,
+                      spinAngle: spinAngle,
+                      progress: progress,
+                    ),
+                    _OrbState.playing => _buildPlayingContent(
+                      context,
+                      o,
+                      fromPoly: fromPoly,
+                      toPoly: toPoly,
+                      morphT: morphT,
+                      spinAngle: spinAngle,
+                      progress: progress ?? 0.0,
+                    ),
+                  },
+                ),
+              ],
             ),
-            switchInCurve: m3.motion.defaultSpatialCurve,
-            switchOutCurve: m3.motion.effectsCurve,
-            transitionBuilder: (c, a) => FadeTransition(
-              opacity: a,
-              child: ScaleTransition(
-                scale: Tween(begin: 0.82, end: 1.0).animate(a),
-                child: c,
-              ),
-            ),
-            child: content,
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -674,8 +765,8 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
             o.onPasteGrab?.call();
           },
           child: SizedBox(
-            width: 60,
-            height: 60,
+            width: 64,
+            height: 64,
             child: Center(
               child: Icon(
                 Icons.content_paste_go_rounded,
@@ -689,7 +780,15 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
     );
   }
 
-  Widget _buildDownloadsContent(BuildContext context, PopDockOrb o) {
+  Widget _buildDownloadsContent(
+    BuildContext context,
+    PopDockOrb o, {
+    required ExpressivePolygon fromPoly,
+    required ExpressivePolygon toPoly,
+    required double morphT,
+    required double spinAngle,
+    required double? progress,
+  }) {
     final cs = context.cs;
     return Tooltip(
       key: const ValueKey('orb-downloads'),
@@ -704,35 +803,37 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
             Haptics.selection();
             o.onOpenDownloads?.call();
           },
-          child: AnimatedBuilder(
-            animation: _pulse,
-            builder: (_, _) => SizedBox(
-              width: 60,
-              height: 60,
-              child: CustomPaint(
-                painter: _RadialOrbPainter(
-                  progress: o.downloadProgress,
-                  sweepPhase: _pulse.value * math.pi * 2,
-                  trackColor: cs.surfaceContainerHighest,
-                  activeColor: cs.primary,
-                ),
-                child: Center(
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${o.activeDownloads}',
-                      style: TextStyle(
-                        fontFamily: Pop.font,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: cs.onPrimaryContainer,
-                      ),
+          child: SizedBox(
+            width: 64,
+            height: 64,
+            child: CustomPaint(
+              painter: _FixedStartMorphProgressPainter(
+                fromPolygon: fromPoly,
+                toPolygon: toPoly,
+                morphT: morphT,
+                spinAngle: spinAngle,
+                progress: progress,
+                sweepPhase: _indeterminateSweep.value * math.pi * 2,
+                trackColor: cs.outlineVariant.withValues(alpha: 0.45),
+                activeColor: cs.primary,
+                strokeWidth: 3.5,
+              ),
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${o.activeDownloads}',
+                    style: TextStyle(
+                      fontFamily: Pop.font,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: cs.onPrimaryContainer,
                     ),
                   ),
                 ),
@@ -744,148 +845,269 @@ class _MorphingCompanionOrbState extends State<_MorphingCompanionOrb>
     );
   }
 
-  Widget _buildPlayingContent(BuildContext context, PopDockOrb o) {
+  Widget _buildPlayingContent(
+    BuildContext context,
+    PopDockOrb o, {
+    required ExpressivePolygon fromPoly,
+    required ExpressivePolygon toPoly,
+    required double morphT,
+    required double spinAngle,
+    required double progress,
+  }) {
     final cs = context.cs;
-    Widget inner(VoidCallback? onTap, {Key? key}) => Tooltip(
-      key: key,
-      message: o.playingTitle ?? 'Now playing',
-      child: Semantics(
-        button: true,
-        label: o.playingTitle == null
-            ? 'Now playing, tap to open player'
-            : 'Now playing ${o.playingTitle}, tap to open player',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          onLongPress: o.onTogglePlay == null
-              ? null
-              : () {
-                  Haptics.medium();
-                  o.onTogglePlay!();
-                },
-          child: SizedBox(
-            width: 60,
-            height: 60,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                PopThumb(
-                  seed: o.playingSeed!,
-                  url: o.playingThumbUrl,
-                  audio: true,
-                  size: 40,
-                  radius: BorderRadius.circular(20),
-                ),
-                Positioned(
-                  right: 4,
-                  bottom: 4,
-                  child: AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (_, child) {
-                      final scale = o.isPlaying
-                          ? 1.0 + 0.12 * math.sin(_pulse.value * math.pi * 2)
-                          : 1.0;
-                      return Transform.scale(scale: scale, child: child);
-                    },
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: cs.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: cs.surfaceContainerHigh,
-                          width: 1.5,
+    final innerBorder = ExpressivePolygonBorder(
+      polygon: fromPoly,
+      morphTo: toPoly,
+      morphT: morphT,
+      rotation: spinAngle,
+    );
+
+    Widget buildOrbBody(VoidCallback? openPlayer, {Key? key}) {
+      return Tooltip(
+        key: key,
+        message: o.playingTitle ?? 'Now playing',
+        child: Semantics(
+          button: true,
+          label: o.playingTitle == null
+              ? 'Now playing, tap to play or pause, long press to open player'
+              : 'Now playing ${o.playingTitle}, tap to play or pause, long press to open player',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              Haptics.light();
+              if (o.onTogglePlay != null) {
+                o.onTogglePlay!();
+              } else {
+                openPlayer?.call();
+              }
+            },
+            onLongPress: openPlayer == null
+                ? null
+                : () {
+                    Haptics.medium();
+                    openPlayer();
+                  },
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Full-bleed album art clipped to the rotating & morphing M3 shape.
+                  Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: ClipPath(
+                      clipper: ShapeBorderClipper(shape: innerBorder),
+                      child: Transform.rotate(
+                        angle: spinAngle,
+                        child: Transform.scale(
+                          scale: 1.24,
+                          child: PopThumb(
+                            seed: o.playingSeed!,
+                            url: o.playingThumbUrl,
+                            audio: true,
+                            size: 56,
+                            radius: BorderRadius.zero,
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        o.isPlaying
-                            ? Icons.graphic_eq_rounded
-                            : Icons.pause_rounded,
-                        size: 12,
-                        color: cs.onPrimary,
                       ),
                     ),
                   ),
-                ),
-              ],
+                  // Subtle pause veil when paused so the user can tell at a glance,
+                  // while keeping the exact last Material shape and album art visible.
+                  if (!o.isPlaying)
+                    Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: ClipPath(
+                        clipper: ShapeBorderClipper(shape: innerBorder),
+                        child: ColoredBox(
+                          color: Colors.black.withValues(alpha: 0.28),
+                          child: const SizedBox.expand(
+                            child: Center(
+                              child: Icon(
+                                Icons.play_arrow_rounded,
+                                size: 22,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Fixed-orientation progress border tracing the spinning polygon perimeter
+                  // from 12 o'clock clockwise without rotating its start anchor.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _FixedStartMorphProgressPainter(
+                          fromPolygon: fromPoly,
+                          toPolygon: toPoly,
+                          morphT: morphT,
+                          spinAngle: spinAngle,
+                          progress: progress,
+                          sweepPhase: 0.0,
+                          trackColor: cs.primary.withValues(alpha: 0.28),
+                          activeColor: cs.primary,
+                          strokeWidth: 3.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
 
     if (o.playingPageBuilder != null) {
       return Morph(
         key: const ValueKey('orb-playing'),
-        shape: const ExpressivePolygonBorder(
-          polygon: ExpressivePolygon.cookie9,
-        ),
+        shape: innerBorder,
         color: Colors.transparent,
         pageColor: cs.surface,
         page: o.playingPageBuilder!,
-        builder: (_, open) => inner(open),
+        builder: (_, open) => buildOrbBody(open),
       );
     }
-    return inner(o.onOpenPlayer, key: const ValueKey('orb-playing'));
+    return buildOrbBody(o.onOpenPlayer, key: const ValueKey('orb-playing'));
   }
 }
 
-class _RadialOrbPainter extends CustomPainter {
-  const _RadialOrbPainter({
+/// Paints a track border and active progress stroke around the morphing &
+/// spinning Material 3 polygon perimeter while keeping the progress start
+/// anchored at 12 o'clock (`-math.pi / 2`) in screen coordinates.
+class _FixedStartMorphProgressPainter extends CustomPainter {
+  const _FixedStartMorphProgressPainter({
+    required this.fromPolygon,
+    required this.toPolygon,
+    required this.morphT,
+    required this.spinAngle,
     required this.progress,
     required this.sweepPhase,
     required this.trackColor,
     required this.activeColor,
+    this.strokeWidth = 3.5,
   });
 
+  final ExpressivePolygon fromPolygon;
+  final ExpressivePolygon toPolygon;
+  final double morphT;
+  final double spinAngle;
   final double? progress;
   final double sweepPhase;
   final Color trackColor;
   final Color activeColor;
+  final double strokeWidth;
+
+  static const int _samples = 120;
+
+  double _radiusAtScreenAngle(double screenAngle) {
+    final localTheta = screenAngle - spinAngle;
+    final r1 = _polarRadius(fromPolygon, localTheta);
+    final r2 = _polarRadius(toPolygon, localTheta);
+    return lerpDouble(r1, r2, morphT) ?? r1;
+  }
+
+  static double _polarRadius(ExpressivePolygon p, double theta) {
+    switch (p) {
+      case ExpressivePolygon.circle:
+      case ExpressivePolygon.pill:
+        return 1.0;
+      case ExpressivePolygon.squircle:
+        final c = math.cos(theta).abs();
+        final s = math.sin(theta).abs();
+        const n = 4.2;
+        final denom = math.pow(math.pow(c, n) + math.pow(s, n), 1.0 / n);
+        return (1.0 / denom).clamp(0.0, 1.0);
+      case ExpressivePolygon.clover4:
+        return 0.85 + 0.15 * math.cos(4 * (theta - math.pi / 4));
+      case ExpressivePolygon.cookie6:
+        return 0.89 + 0.11 * math.cos(6 * theta);
+      case ExpressivePolygon.cookie9:
+        return 0.915 + 0.085 * math.cos(9 * theta);
+      case ExpressivePolygon.cookie12:
+        return 0.935 + 0.065 * math.cos(12 * theta);
+      case ExpressivePolygon.arch:
+        final s = math.sin(theta);
+        if (s <= 0) return 1.0;
+        final c = math.cos(theta).abs();
+        const n = 5.0;
+        final denom = math.pow(math.pow(c, n) + math.pow(s, n), 1.0 / n);
+        return (1.0 / denom).clamp(0.0, 1.0);
+    }
+  }
+
+  Path _buildSubPath(Rect rect, double startAngle, double sweepAngle) {
+    final cx = rect.center.dx;
+    final cy = rect.center.dy;
+    final rx = rect.width / 2;
+    final ry = rect.height / 2;
+    final steps = math.max(
+      4,
+      (_samples * (sweepAngle.abs() / (math.pi * 2))).ceil(),
+    );
+    final path = Path();
+    for (var i = 0; i <= steps; i++) {
+      final alpha = startAngle + (i / steps) * sweepAngle;
+      final r = _radiusAtScreenAngle(alpha);
+      final x = cx + rx * r * math.cos(alpha);
+      final y = cy + ry * r * math.sin(alpha);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    return path;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    const stroke = 4.0;
-    final rect = Offset.zero & size;
-    final arcRect = rect.deflate(6.0);
+    final rect = (Offset.zero & size).deflate(strokeWidth / 2 + 0.5);
+    if (rect.width <= 0 || rect.height <= 0) return;
 
-    canvas.drawArc(
-      arcRect,
-      0,
-      math.pi * 2,
-      false,
+    final trackPath = _buildSubPath(rect, -math.pi / 2, math.pi * 2)..close();
+    canvas.drawPath(
+      trackPath,
       Paint()
         ..color = trackColor
-        ..strokeWidth = stroke
-        ..style = PaintingStyle.stroke,
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round,
     );
 
     final activePaint = Paint()
       ..color = activeColor
-      ..strokeWidth = stroke
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
     if (progress == null) {
-      canvas.drawArc(
-        arcRect,
+      // Indeterminate sweeping segment along the morphing contour.
+      final seg = _buildSubPath(
+        rect,
         -math.pi / 2 + sweepPhase,
-        math.pi * 0.75,
-        false,
-        activePaint,
+        math.pi * 0.7,
       );
+      canvas.drawPath(seg, activePaint);
     } else {
-      final sweep = (progress!.clamp(0.0, 1.0) * math.pi * 2).clamp(
-        0.15,
-        math.pi * 2,
-      );
-      canvas.drawArc(arcRect, -math.pi / 2, sweep, false, activePaint);
+      final clamped = progress!.clamp(0.0, 1.0);
+      if (clamped <= 0.005) return;
+      final sweep = (clamped * math.pi * 2).clamp(0.08, math.pi * 2);
+      final activePath = _buildSubPath(rect, -math.pi / 2, sweep);
+      canvas.drawPath(activePath, activePaint);
     }
   }
 
   @override
-  bool shouldRepaint(_RadialOrbPainter old) =>
+  bool shouldRepaint(_FixedStartMorphProgressPainter old) =>
+      old.fromPolygon != fromPolygon ||
+      old.toPolygon != toPolygon ||
+      old.morphT != morphT ||
+      old.spinAngle != spinAngle ||
       old.progress != progress ||
       old.sweepPhase != sweepPhase ||
       old.trackColor != trackColor ||
@@ -966,7 +1188,8 @@ class _ExpressiveTabStackState extends State<ExpressiveTabStack>
         final spatialT = still
             ? 1.0
             : m3.motion.defaultSpatialCurve.transform(_ctrl.value);
-        final fadeT = still ? 1.0 : m3.motion.effectsCurve.transform(_ctrl.value);
+        final fadeT =
+            still ? 1.0 : m3.motion.effectsCurve.transform(_ctrl.value);
         final animating = !still && _previous != null && _ctrl.isAnimating;
 
         return Stack(

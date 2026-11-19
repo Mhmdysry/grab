@@ -591,22 +591,20 @@ void main() {
                     Icons.home_outlined,
                     'Home',
                     activeIcon: Icons.home_rounded,
-                  ),
-                  PopTab(
-                    Icons.download_outlined,
-                    'Downloads',
-                    activeIcon: Icons.download_rounded,
                     badge: 3,
+                    animation: PopTabAnimation.homeHop,
                   ),
                   PopTab(
                     Icons.video_library_outlined,
                     'Library',
                     activeIcon: Icons.video_library_rounded,
+                    animation: PopTabAnimation.libraryCascade,
                   ),
                   PopTab(
-                    Icons.tune_outlined,
+                    Icons.settings_outlined,
                     'Settings',
-                    activeIcon: Icons.tune_rounded,
+                    activeIcon: Icons.settings_rounded,
+                    animation: PopTabAnimation.settingsSpin,
                   ),
                 ],
               ),
@@ -614,13 +612,15 @@ void main() {
           ),
         );
         expect(tester.takeException(), isNull);
-        expect(find.text('Downloads'), findsOneWidget);
+        expect(find.text('Library'), findsOneWidget);
+        expect(find.text('Home'), findsNothing);
+        expect(find.text('Settings'), findsNothing);
         expect(find.text('1.42 GB'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'ExpressiveFloatingNavBar keeps equal-width stacked labels stationary and morphs orb polygons',
+      'ExpressiveFloatingNavBar shows label only when selected and animates 3 tabs + morphing orb',
       (tester) async {
         tester.view.physicalSize = const Size(360, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -629,14 +629,18 @@ void main() {
 
         final theme = buildExpressiveTheme(
           const AppSettings(
-            motionPreset: M3MotionPreset.off,
+            motionPreset: M3MotionPreset.expressive,
             navStyle: M3NavStyle.floatingPill,
             fontScale: 1.2,
           ),
-          brightness: Brightness.light,
+          brightness: Brightness.dark,
         );
 
         var selected = 0;
+        var isPlaying = true;
+        var toggleCount = 0;
+        var openPlayerCount = 0;
+
         await tester.pumpWidget(
           MaterialApp(
             theme: theme,
@@ -657,24 +661,33 @@ void main() {
                       Icons.home_outlined,
                       'Home',
                       activeIcon: Icons.home_rounded,
-                    ),
-                    PopTab(
-                      Icons.download_outlined,
-                      'Downloads',
-                      activeIcon: Icons.download_rounded,
                       badge: 2,
+                      animation: PopTabAnimation.homeHop,
                     ),
                     PopTab(
                       Icons.video_library_outlined,
                       'Library',
                       activeIcon: Icons.video_library_rounded,
+                      animation: PopTabAnimation.libraryCascade,
                     ),
                     PopTab(
-                      Icons.tune_outlined,
+                      Icons.settings_outlined,
                       'Settings',
-                      activeIcon: Icons.tune_rounded,
+                      activeIcon: Icons.settings_rounded,
+                      animation: PopTabAnimation.settingsSpin,
                     ),
                   ],
+                  orb: PopDockOrb(
+                    playingTitle: 'Buckley Live',
+                    playingSeed: 'seed-1',
+                    isPlaying: isPlaying,
+                    playingProgress: 0.42,
+                    onTogglePlay: () {
+                      toggleCount++;
+                      setState(() => isPlaying = !isPlaying);
+                    },
+                    onOpenPlayer: () => openPlayerCount++,
+                  ),
                 ),
               ),
             ),
@@ -682,31 +695,39 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        // All 4 stacked labels remain simultaneously visible.
+        // Only the selected tab ('Home') shows its label; unselected tabs show only icons.
         expect(find.text('Home'), findsOneWidget);
-        expect(find.text('Downloads'), findsOneWidget);
-        expect(find.text('Library'), findsOneWidget);
-        expect(find.text('Settings'), findsOneWidget);
+        expect(find.text('Library'), findsNothing);
+        expect(find.text('Settings'), findsNothing);
 
-        final homeXBefore = tester.getCenter(find.text('Home')).dx;
-        final libraryXBefore = tester.getCenter(find.text('Library')).dx;
-        final settingsXBefore = tester.getCenter(find.text('Settings')).dx;
-
-        await tester.tap(find.text('Downloads'));
+        // Tap Library icon -> Library label expands, Home label hides.
+        await tester.tap(find.byIcon(Icons.video_library_outlined));
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
         expect(tester.takeException(), isNull);
         expect(selected, 1);
+        expect(find.text('Library'), findsOneWidget);
+        expect(find.text('Home'), findsNothing);
 
-        // Equal-width stacked tabs must never shift sibling X coordinates.
-        expect(tester.getCenter(find.text('Home')).dx, closeTo(homeXBefore, 0.5));
-        expect(
-          tester.getCenter(find.text('Library')).dx,
-          closeTo(libraryXBefore, 0.5),
-        );
-        expect(
-          tester.getCenter(find.text('Settings')).dx,
-          closeTo(settingsXBefore, 0.5),
-        );
+        // Tap circular gear Settings icon -> Settings label expands, gear spins.
+        await tester.tap(find.byIcon(Icons.settings_outlined));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(tester.takeException(), isNull);
+        expect(selected, 2);
+        expect(find.text('Settings'), findsOneWidget);
+        expect(find.text('Library'), findsNothing);
+
+        // Single tap on the playing orb toggles play/pause and freezes the morphing shape in place.
+        await tester.tap(find.byKey(const ValueKey('orb-playing')));
+        await tester.pump();
+        expect(toggleCount, 1);
+        expect(isPlaying, isFalse);
+
+        // Long press on the playing orb opens the full player.
+        await tester.longPress(find.byKey(const ValueKey('orb-playing')));
+        await tester.pump();
+        expect(openPlayerCount, 1);
       },
     );
 
@@ -764,31 +785,37 @@ void main() {
     );
 
     testWidgets(
-      'InstantGrabBar and ShareOverlayCard bubble prompt render without overflow at 360dp / 1.2x',
+      'InstantGrabBar, ShareOverlayCard Instant Grab toggle, and ExpressivePillChip in Monochrome dark mode shift text color cleanly',
       (tester) async {
         tester.view.physicalSize = const Size(360, 800);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
 
-        final theme = buildExpressiveTheme(
+        final monoDarkTheme = buildExpressiveTheme(
           const AppSettings(
             motionPreset: M3MotionPreset.off,
+            schemeStyle: M3SchemeStyle.monochrome,
+            amoledDark: true,
             fontScale: 1.2,
           ),
           brightness: Brightness.dark,
+          transparentBackground: true,
         );
 
+        expect(monoDarkTheme.scaffoldBackgroundColor, Colors.transparent);
+        expect(monoDarkTheme.canvasColor, Colors.transparent);
+
         var instant = false;
+        var byPlatform = false;
         var modeCycled = false;
         var qualityPicked = false;
-        var bubbleEnabled = false;
-        var bubbleDismissed = false;
+        var shareInstantToggled = false;
 
         await tester.pumpWidget(
           ProviderScope(
             child: MaterialApp(
-              theme: theme,
+              theme: monoDarkTheme,
               builder: (context, child) => MediaQuery(
                 data: MediaQuery.of(
                   context,
@@ -800,12 +827,26 @@ void main() {
                   padding: const EdgeInsets.all(20),
                   children: [
                     StatefulBuilder(
-                      builder: (context, setState) => InstantGrabBar(
-                        settings: AppSettings(instantGrab: instant),
-                        onToggleInstant: () =>
-                            setState(() => instant = !instant),
-                        onCycleMode: () => modeCycled = true,
-                        onPickQuality: () => qualityPicked = true,
+                      builder: (context, setState) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          InstantGrabBar(
+                            settings: AppSettings(instantGrab: instant),
+                            onToggleInstant: () =>
+                                setState(() => instant = !instant),
+                            onCycleMode: () => modeCycled = true,
+                            onPickQuality: () => qualityPicked = true,
+                          ),
+                          const SizedBox(height: 10),
+                          ExpressivePillChip(
+                            icon: Icons.workspaces_rounded,
+                            label: 'By platform',
+                            selected: byPlatform,
+                            showCheckmark: true,
+                            onTap: () =>
+                                setState(() => byPlatform = !byPlatform),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -821,9 +862,7 @@ void main() {
                         ),
                       ),
                       settings: const AppSettings(),
-                      showBubblePrompt: true,
-                      onEnableBubble: () => bubbleEnabled = true,
-                      onDismissBubblePrompt: () => bubbleDismissed = true,
+                      onToggleInstantGrab: () => shareInstantToggled = true,
                     ),
                   ],
                 ),
@@ -833,6 +872,17 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
+
+        // Verify 'By platform' text color shifts on selection in Monochrome dark mode.
+        final cs = monoDarkTheme.colorScheme;
+        Text byPlatformText() => tester.widget<Text>(find.text('By platform'));
+        expect(byPlatformText().style?.color, cs.onSurfaceVariant);
+
+        await tester.tap(find.text('By platform'));
+        await tester.pump();
+        expect(byPlatform, isTrue);
+        expect(byPlatformText().style?.color, cs.onPrimaryContainer);
+
         await tester.tap(
           find.descendant(
             of: find.byType(InstantGrabBar),
@@ -861,18 +911,10 @@ void main() {
         await tester.tap(
           find.descendant(
             of: find.byType(ShareOverlayCard),
-            matching: find.text('Turn on'),
+            matching: find.text('Instant Grab'),
           ),
         );
-        expect(bubbleEnabled, isTrue);
-
-        await tester.tap(
-          find.descendant(
-            of: find.byType(ShareOverlayCard),
-            matching: find.byTooltip('Dismiss'),
-          ),
-        );
-        expect(bubbleDismissed, isTrue);
+        expect(shareInstantToggled, isTrue);
       },
     );
   });

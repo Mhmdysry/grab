@@ -48,20 +48,18 @@ class ShareOverlayApp extends ConsumerWidget {
               settings,
               brightness: Brightness.light,
               dynamicSeed: dynamicSeed,
+              transparentBackground: true,
             ),
             darkTheme: buildExpressiveTheme(
               settings,
               brightness: Brightness.dark,
               dynamicSeed: dynamicSeed,
+              transparentBackground: true,
             ),
             themeMode: settings.themeMode,
             builder: (context, child) {
               final theme = Theme.of(context);
               syncToastScheme(theme.colorScheme);
-              syncBubbleConfig(
-                enabled: settings.floatingBubbleEnabled,
-                scheme: theme.colorScheme,
-              );
               final isDark = theme.brightness == Brightness.dark;
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: isDark
@@ -92,9 +90,8 @@ class _ShareOverlayHost extends ConsumerStatefulWidget {
 }
 
 class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   static const _channel = MethodChannel('grab/share');
-  static const _dismissedBubbleKey = 'dismissedBubblePrompt';
 
   late final AnimationController _entrance = AnimationController(
     vsync: this,
@@ -106,7 +103,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   String? _customError;
   var _expanded = false;
   var _busyEnqueue = false;
-  var _showBubblePrompt = false;
   String? _queuedJobId;
   int _queuedCount = 1;
   final Set<int> _playlistPicked = {};
@@ -116,7 +112,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText') {
         await _handleIncoming(call.arguments as String?);
@@ -125,56 +120,13 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     _channel
         .invokeMethod<String>('takeSharedText')
         .then(_handleIncoming, onError: (_) {});
-    _refreshBubblePrompt();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _autoCloseTimer?.cancel();
     _entrance.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshBubblePrompt();
-    }
-  }
-
-  Future<void> _refreshBubblePrompt() async {
-    final prefs = ref.read(sharedPrefsProvider);
-    final dismissed = prefs.getBool(_dismissedBubbleKey) ?? false;
-    final enabled = ref.read(settingsProvider).floatingBubbleEnabled;
-    if (dismissed || !enabled) {
-      if (mounted && _showBubblePrompt) {
-        setState(() => _showBubblePrompt = false);
-      }
-      return;
-    }
-    final granted = await overlayPermissionGranted();
-    if (!mounted) return;
-    setState(() => _showBubblePrompt = !granted);
-  }
-
-  Future<void> _enableBubble() async {
-    Haptics.selection();
-    final granted = await requestOverlayPermission(context);
-    if (!mounted) return;
-    if (granted) {
-      setState(() => _showBubblePrompt = false);
-      await syncBubbleConfig(
-        enabled: true,
-        scheme: Theme.of(context).colorScheme,
-      );
-    }
-  }
-
-  Future<void> _dismissBubblePrompt() async {
-    Haptics.selection();
-    await ref.read(sharedPrefsProvider).setBool(_dismissedBubbleKey, true);
-    if (mounted) setState(() => _showBubblePrompt = false);
   }
 
   Future<void> _handleIncoming(String? raw) async {
@@ -182,7 +134,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     await ref.read(sharedPrefsProvider).reload();
     ref.invalidate(settingsProvider);
     if (!mounted) return;
-    _refreshBubblePrompt();
 
     final link = extractLink(raw) ?? raw?.trim();
     setState(() {
@@ -230,7 +181,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     _autoCloseTimer?.cancel();
     try {
       if (_queuedJobId != null) {
-        await _channel.invokeMethod('openMainApp', {'tab': 'downloads'});
+        await _channel.invokeMethod('openMainApp', {'tab': 'home'});
       } else {
         await _channel.invokeMethod('openMainApp', {'url': _sharedUrl});
       }
@@ -339,6 +290,12 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
             ..clear()
             ..addAll([for (var i = 0; i < info.entries.length; i++) i]);
         });
+        final isPlaylist = info.isPlaylist && info.entries.isNotEmpty;
+        if (ref.read(settingsProvider).instantGrab && !isPlaylist) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _phase == ShareCardPhase.ready) _download();
+          });
+        }
       } else if (next is AsyncError) {
         setState(() => _phase = ShareCardPhase.error);
       } else if (next is AsyncLoading && _phase != ShareCardPhase.queued) {
@@ -433,6 +390,15 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
                               Haptics.selection();
                               setState(() => _expanded = !_expanded);
                             },
+                            onToggleInstantGrab: () {
+                              ref
+                                  .read(settingsProvider.notifier)
+                                  .update(
+                                    (x) => x.copyWith(
+                                      instantGrab: !x.instantGrab,
+                                    ),
+                                  );
+                            },
                             onModeChanged: fetchCtrl.setMode,
                             onOptionChanged: fetchCtrl.setOption,
                             onTrimToggle: fetchCtrl.setTrimOn,
@@ -494,9 +460,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
                                 : () => ref
                                       .read(downloadRepositoryProvider)
                                       .cancel(activeJob.id),
-                            showBubblePrompt: _showBubblePrompt,
-                            onEnableBubble: _enableBubble,
-                            onDismissBubblePrompt: _dismissBubblePrompt,
                           ),
                         ),
                       ),
@@ -513,7 +476,8 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
 }
 
 /// Floating Material 3 Expressive share card supporting compact & expanded
-/// download options, queued celebration, and optional live progress tracking.
+/// download options, 1-tap Instant Grab toggle, queued celebration, and
+/// optional live progress tracking.
 class ShareOverlayCard extends StatelessWidget {
   const ShareOverlayCard({
     super.key,
@@ -525,6 +489,7 @@ class ShareOverlayCard extends StatelessWidget {
     this.expanded = false,
     this.busy = false,
     this.onToggleExpand,
+    this.onToggleInstantGrab,
     this.onModeChanged,
     this.onOptionChanged,
     this.onTrimToggle,
@@ -544,9 +509,6 @@ class ShareOverlayCard extends StatelessWidget {
     this.activeSpeed,
     this.onPauseResumeJob,
     this.onCancelJob,
-    this.showBubblePrompt = false,
-    this.onEnableBubble,
-    this.onDismissBubblePrompt,
   });
 
   final ShareCardPhase phase;
@@ -557,6 +519,7 @@ class ShareOverlayCard extends StatelessWidget {
   final bool expanded;
   final bool busy;
   final VoidCallback? onToggleExpand;
+  final VoidCallback? onToggleInstantGrab;
   final ValueChanged<DownloadMode>? onModeChanged;
   final ValueChanged<int>? onOptionChanged;
   final ValueChanged<bool>? onTrimToggle;
@@ -576,9 +539,6 @@ class ShareOverlayCard extends StatelessWidget {
   final String? activeSpeed;
   final VoidCallback? onPauseResumeJob;
   final VoidCallback? onCancelJob;
-  final bool showBubblePrompt;
-  final VoidCallback? onEnableBubble;
-  final VoidCallback? onDismissBubblePrompt;
 
   @override
   Widget build(BuildContext context) {
@@ -614,17 +574,35 @@ class ShareOverlayCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(2),
+                Row(
+                  children: [
+                    if (onToggleInstantGrab != null)
+                      ExpressivePillChip(
+                        label: 'Instant Grab',
+                        icon: Icons.bolt_rounded,
+                        selected: settings.instantGrab,
+                        onTap: onToggleInstantGrab,
+                        semanticLabel:
+                            'Instant Grab, ${settings.instantGrab ? 'on' : 'off'}',
+                      )
+                    else
+                      const SizedBox(width: 48),
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 48),
+                  ],
                 ),
+                const SizedBox(height: 12),
                 AnimatedSwitcher(
                   duration: m3.motion.resolve(
                     context,
@@ -924,17 +902,13 @@ class ShareOverlayCard extends StatelessWidget {
             children: [
               for (final (i, opt) in (expanded ? options : compactOptions)
                   .indexed)
-                ChoiceChip(
-                  label: Text(
-                    opt.bytes == null
-                        ? opt.label
-                        : '${opt.label} · ${formatBytes(opt.bytes)}',
-                  ),
+                ExpressivePillChip(
+                  label: opt.bytes == null
+                      ? opt.label
+                      : '${opt.label} · ${formatBytes(opt.bytes)}',
                   selected: i == selectedIdx,
-                  onSelected: (_) {
-                    Haptics.selection();
-                    onOptionChanged?.call(i);
-                  },
+                  showCheckmark: true,
+                  onTap: () => onOptionChanged?.call(i),
                 ),
             ],
           ),
@@ -977,59 +951,6 @@ class ShareOverlayCard extends StatelessWidget {
                 ? _buildPlaylistExpanded(context, info)
                 : _buildSingleExpanded(context, info, activeMode),
           ),
-        if (showBubblePrompt) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-            decoration: BoxDecoration(
-              color: cs.secondaryContainer.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.bubble_chart_rounded,
-                  size: 18,
-                  color: cs.onSecondaryContainer,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Float progress bubble over apps',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSecondaryContainer,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: onEnableBubble,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  child: const Text(
-                    'Turn on',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Dismiss',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onDismissBubblePrompt,
-                  icon: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: cs.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
         const SizedBox(height: 14),
         Row(
           children: [
@@ -1107,13 +1028,11 @@ class ShareOverlayCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 for (final t in info.subtitles)
-                  FilterChip(
-                    label: Text(t.auto ? '${t.name} · auto' : t.name),
+                  ExpressivePillChip(
+                    label: t.auto ? '${t.name} · auto' : t.name,
                     selected: fetchState.subLangs.contains(t.lang),
-                    onSelected: (_) {
-                      Haptics.selection();
-                      onToggleLang?.call(t.lang);
-                    },
+                    showCheckmark: true,
+                    onTap: () => onToggleLang?.call(t.lang),
                   ),
               ],
             ),

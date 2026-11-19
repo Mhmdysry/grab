@@ -120,7 +120,6 @@ class AppSettings {
     this.confettiEnabled = true,
     this.artworkTinting = true,
     this.shareKeepOpen = false,
-    this.floatingBubbleEnabled = true,
     this.instantGrab = false,
   });
 
@@ -158,7 +157,6 @@ class AppSettings {
   final bool confettiEnabled;
   final bool artworkTinting;
   final bool shareKeepOpen;
-  final bool floatingBubbleEnabled;
   final bool instantGrab;
 
   static const saveBases = ['download', 'movies', 'music'];
@@ -203,7 +201,6 @@ class AppSettings {
     bool? confettiEnabled,
     bool? artworkTinting,
     bool? shareKeepOpen,
-    bool? floatingBubbleEnabled,
     bool? instantGrab,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
@@ -230,8 +227,6 @@ class AppSettings {
     confettiEnabled: confettiEnabled ?? this.confettiEnabled,
     artworkTinting: artworkTinting ?? this.artworkTinting,
     shareKeepOpen: shareKeepOpen ?? this.shareKeepOpen,
-    floatingBubbleEnabled:
-        floatingBubbleEnabled ?? this.floatingBubbleEnabled,
     instantGrab: instantGrab ?? this.instantGrab,
   );
 
@@ -338,7 +333,6 @@ class AppSettings {
       confettiEnabled: p.getBool('confettiEnabled') ?? true,
       artworkTinting: p.getBool('artworkTinting') ?? true,
       shareKeepOpen: p.getBool('shareKeepOpen') ?? false,
-      floatingBubbleEnabled: p.getBool('floatingBubbleEnabled') ?? true,
       instantGrab: p.getBool('instantGrab') ?? false,
     );
   }
@@ -372,7 +366,6 @@ class AppSettings {
     await p.setBool('confettiEnabled', confettiEnabled);
     await p.setBool('artworkTinting', artworkTinting);
     await p.setBool('shareKeepOpen', shareKeepOpen);
-    await p.setBool('floatingBubbleEnabled', floatingBubbleEnabled);
     await p.setBool('instantGrab', instantGrab);
   }
 

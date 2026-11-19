@@ -879,3 +879,95 @@ class PopOptionTile extends StatelessWidget {
     );
   }
 }
+
+/// Mono-safe Material 3 Expressive animated pill chip matching the contrast-shifting
+/// behavior of the `Instant Grab` button across all palettes (including Monochrome).
+class ExpressivePillChip extends StatelessWidget {
+  const ExpressivePillChip({
+    super.key,
+    required this.label,
+    this.icon,
+    this.selected = false,
+    this.showCheckmark = false,
+    this.onTap,
+    this.semanticLabel,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final bool showCheckmark;
+  final VoidCallback? onTap;
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final enabled = onTap != null;
+    final fg = selected ? cs.onPrimaryContainer : cs.onSurfaceVariant;
+    final bg = selected ? cs.primaryContainer : cs.surfaceContainerHigh;
+    final side = BorderSide(
+      color: selected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
+      width: selected ? 1.5 : 1.0,
+    );
+    final shape = m3.shapeStyle == M3ShapeStyle.crisp
+        ? RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: side,
+          )
+        : StadiumBorder(side: side);
+    final effectiveIcon = selected && showCheckmark ? Icons.check_rounded : icon;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: enabled,
+      label: semanticLabel ?? label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled
+            ? () {
+                Haptics.selection();
+                onTap!();
+              }
+            : null,
+        child: AnimatedContainer(
+          duration: m3.motion.resolve(
+            context,
+            m3.motion.defaultSpatialDuration,
+          ),
+          curve: m3.motion.defaultSpatialCurve,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: ShapeDecoration(
+            color: enabled ? bg : bg.withValues(alpha: 0.5),
+            shape: shape,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (effectiveIcon != null) ...[
+                Icon(
+                  effectiveIcon,
+                  size: 17,
+                  color: enabled ? fg : fg.withValues(alpha: 0.4),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: Pop.font,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+                  color: enabled ? fg : fg.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

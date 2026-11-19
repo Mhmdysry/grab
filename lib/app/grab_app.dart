@@ -11,7 +11,6 @@ import 'package:toastification/toastification.dart';
 
 import '../core/theme/pop_theme.dart';
 import '../core/utils/links.dart';
-import '../core/utils/permissions.dart';
 import '../core/audio/audio_playback.dart';
 import '../core/widgets/app_scale.dart';
 import '../core/widgets/dock_inset.dart';
@@ -22,7 +21,6 @@ import '../core/widgets/pop_widgets.dart';
 import '../core/widgets/toasts.dart';
 import '../data/db/app_database.dart';
 import '../data/settings/app_settings.dart';
-import '../features/downloads/downloads_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -67,10 +65,6 @@ class GrabApp extends ConsumerWidget {
             builder: (context, child) {
               final theme = Theme.of(context);
               syncToastScheme(theme.colorScheme);
-              syncBubbleConfig(
-                enabled: settings.floatingBubbleEnabled,
-                scheme: theme.colorScheme,
-              );
               final isDark = theme.brightness == Brightness.dark;
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: isDark
@@ -174,11 +168,17 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
     if (action == null) return;
     if (action == 'openDownloads') {
       _refreshDb();
-      if (mounted) setState(() => _tab = 1);
+      if (mounted) {
+        setState(() => _tab = 0);
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _home.currentState?.scrollToDownloads(),
+        );
+      }
       return;
     }
     if (action.startsWith('fetch:')) {
-      final link = extractLink(action.substring(6)) ?? action.substring(6).trim();
+      final link =
+          extractLink(action.substring(6)) ?? action.substring(6).trim();
       if (link.isEmpty || !mounted) return;
       _lastOffered = link;
       _dismissOffer();
@@ -414,13 +414,12 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
               children: [
                 HomeScreen(
                   key: _home,
-                  onQueued: () => setState(() => _tab = 1),
+                  onQueued: () => setState(() => _tab = 0),
                   onFetch: (link) {
                     _remember(link);
                     _dismissOffer();
                   },
                 ),
-                const DownloadsScreen(),
                 const LibraryScreen(),
                 const SettingsScreen(),
               ],
@@ -431,46 +430,67 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
             builder: (context, playing, _) => StreamBuilder<bool>(
               stream: AudioPlayback.player.playingStream,
               initialData: AudioPlayback.player.playing,
-              builder: (context, snap) => PopTabBar(
-                index: _tab,
-                onChanged: (i) => setState(() => _tab = i),
-                tabs: [
-                  const PopTab(
-                    Icons.home_outlined,
-                    'Home',
-                    activeIcon: Icons.home_rounded,
-                  ),
-                  PopTab(
-                    Icons.download_outlined,
-                    'Downloads',
-                    activeIcon: Icons.download_rounded,
-                    badge: active,
-                  ),
-                  const PopTab(
-                    Icons.video_library_outlined,
-                    'Library',
-                    activeIcon: Icons.video_library_rounded,
-                  ),
-                  const PopTab(
-                    Icons.tune_outlined,
-                    'Settings',
-                    activeIcon: Icons.tune_rounded,
-                  ),
-                ],
-                orb: PopDockOrb(
-                  playingTitle: playing?.title,
-                  playingSeed: playing?.jobId,
-                  playingThumbUrl: playing?.thumbnail,
-                  isPlaying: snap.data ?? false,
-                  playingPageBuilder: playing == null
+              builder: (context, snap) => StreamBuilder<Duration>(
+                stream: AudioPlayback.player.positionStream,
+                initialData: AudioPlayback.player.position,
+                builder: (context, posSnap) {
+                  final dur = AudioPlayback.player.duration;
+                  final pos = posSnap.data ?? Duration.zero;
+                  final double? playingProgress =
+                      dur == null || dur.inMilliseconds <= 0
                       ? null
-                      : (_) => AudioPlayerScreen(item: playing),
-                  onTogglePlay: AudioPlayback.toggle,
-                  activeDownloads: active,
-                  downloadProgress: aggregateProgress,
-                  onOpenDownloads: () => setState(() => _tab = 1),
-                  onPasteGrab: _pasteAndGrab,
-                ),
+                      : (pos.inMilliseconds / dur.inMilliseconds).clamp(
+                          0.0,
+                          1.0,
+                        );
+                  return PopTabBar(
+                    index: _tab,
+                    onChanged: (i) => setState(() => _tab = i),
+                    tabs: [
+                      PopTab(
+                        Icons.home_outlined,
+                        'Home',
+                        activeIcon: Icons.home_rounded,
+                        badge: active,
+                        animation: PopTabAnimation.homeHop,
+                      ),
+                      const PopTab(
+                        Icons.video_library_outlined,
+                        'Library',
+                        activeIcon: Icons.video_library_rounded,
+                        animation: PopTabAnimation.libraryCascade,
+                      ),
+                      const PopTab(
+                        Icons.settings_outlined,
+                        'Settings',
+                        activeIcon: Icons.settings_rounded,
+                        animation: PopTabAnimation.settingsSpin,
+                      ),
+                    ],
+                    orb: PopDockOrb(
+                      playingTitle: playing?.title,
+                      playingSeed: playing?.jobId,
+                      playingThumbUrl: playing?.thumbnail,
+                      isPlaying: snap.data ?? false,
+                      playingProgress: playingProgress,
+                      playingPageBuilder: playing == null
+                          ? null
+                          : (_) => AudioPlayerScreen(item: playing),
+                      onTogglePlay: AudioPlayback.toggle,
+                      activeDownloads: active,
+                      downloadProgress: aggregateProgress,
+                      onOpenDownloads: () {
+                        setState(() => _tab = 0);
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _home.currentState?.scrollToDownloads(
+                            highlightJobId: runningJobs.firstOrNull?.id,
+                          ),
+                        );
+                      },
+                      onPasteGrab: _pasteAndGrab,
+                    ),
+                  );
+                },
               ),
             ),
           ),

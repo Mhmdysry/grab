@@ -440,12 +440,12 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
             onChanged: (v) => setState(() => _scrub = v),
           ),
           const SizedBox(height: 10),
-          // Mini Stacked M3E Floating Nav + Shape-Morphing Companion Orb preview
+          // Mini Koda-Style M3E Floating Nav + Shape-Morphing Companion Orb preview
           Row(
             children: [
               Expanded(
                 child: Container(
-                  height: 54,
+                  height: 48,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
                     vertical: 5,
@@ -453,74 +453,67 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(
-                      m3.shapeStyle == M3ShapeStyle.crisp ? 16 : 28,
+                      m3.shapeStyle == M3ShapeStyle.crisp ? 16 : 26,
                     ),
                     border: Border.all(
                       color: cs.outlineVariant.withValues(alpha: 0.45),
                     ),
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       for (final (i, icon, label) in const [
                         (0, Icons.home_rounded, 'Home'),
-                        (1, Icons.download_rounded, 'Queue'),
-                        (2, Icons.video_library_rounded, 'Files'),
+                        (1, Icons.video_library_rounded, 'Library'),
+                        (2, Icons.settings_rounded, 'Settings'),
                       ])
-                        Expanded(
-                          flex: 1,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              Haptics.selection();
-                              setState(() => _dockTab = i);
-                            },
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            Haptics.selection();
+                            setState(() => _dockTab = i);
+                          },
+                          child: AnimatedContainer(
+                            duration: m3.motion.resolve(
+                              context,
+                              m3.motion.defaultSpatialDuration,
+                            ),
+                            curve: m3.motion.defaultSpatialCurve,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: _dockTab == i ? 14 : 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _dockTab == i
+                                  ? cs.primaryContainer
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(
+                                m3.shapeStyle == M3ShapeStyle.crisp ? 10 : 999,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                AnimatedContainer(
-                                  duration: m3.motion.resolve(
-                                    context,
-                                    m3.motion.defaultSpatialDuration,
-                                  ),
-                                  curve: m3.motion.defaultSpatialCurve,
-                                  width: _dockTab == i ? 42 : 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: _dockTab == i
-                                        ? cs.primaryContainer
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(
-                                      m3.shapeStyle == M3ShapeStyle.crisp
-                                          ? 9
-                                          : 999,
+                                Icon(
+                                  icon,
+                                  size: 16,
+                                  color: _dockTab == i
+                                      ? cs.onPrimaryContainer
+                                      : cs.onSurfaceVariant,
+                                ),
+                                if (_dockTab == i) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    label,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: cs.onPrimaryContainer,
                                     ),
                                   ),
-                                  alignment: Alignment.center,
-                                  child: Icon(
-                                    icon,
-                                    size: 16,
-                                    color: _dockTab == i
-                                        ? cs.onPrimaryContainer
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  label,
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  overflow: TextOverflow.fade,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    height: 1.1,
-                                    fontWeight: _dockTab == i
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                    color: _dockTab == i
-                                        ? cs.onSurface
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                ),
+                                ],
                               ],
                             ),
                           ),

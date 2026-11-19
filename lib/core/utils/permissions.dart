@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,8 +9,6 @@ import '../theme/pop_theme.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/pop_widgets.dart';
 import 'haptics.dart';
-
-const _appChannel = MethodChannel('grab/app');
 
 /// Asks for what downloads need, with a short explanation first, the iOS way:
 /// - Notifications (Android 13+): progress and "Saved" alerts. Optional; downloads work without it.
@@ -80,85 +77,6 @@ Future<PermissionStatus> requestNotifications() async {
   final s = await Permission.notification.status;
   if (s.isPermanentlyDenied) return _settings(Permission.notification);
   return Permission.notification.request();
-}
-
-/// Whether "Appear on top" (`SYSTEM_ALERT_WINDOW`) is granted on Android.
-Future<bool> overlayPermissionGranted() async {
-  if (!Platform.isAndroid) return true;
-  try {
-    return (await _appChannel.invokeMethod<bool>('canDrawOverlays')) ?? false;
-  } catch (_) {
-    return false;
-  }
-}
-
-/// Shows an expressive explanation sheet and opens Android's "Appear on top" screen.
-Future<bool> requestOverlayPermission(
-  BuildContext context, {
-  bool explain = true,
-}) async {
-  if (!Platform.isAndroid) return true;
-  if (await overlayPermissionGranted()) return true;
-  if (explain) {
-    if (!context.mounted) return false;
-    final go = await _explain(
-      context,
-      icon: Icons.bubble_chart_rounded,
-      title: 'Floating progress bubble',
-      body:
-          'Allow "Appear on top" so Grab can float a draggable progress bubble while you scroll other apps. Sharing links works even without it.',
-      permanentlyDenied: false,
-      actionLabel: 'Allow in settings',
-    );
-    if (!go) return false;
-  }
-  try {
-    await _appChannel.invokeMethod<void>('requestOverlayPermission');
-  } catch (_) {}
-  return overlayPermissionGranted();
-}
-
-Object? _lastBubbleSig;
-
-/// Syncs the native floating bubble's enabled state and active Material 3 colors.
-Future<void> syncBubbleConfig({
-  required bool enabled,
-  required ColorScheme scheme,
-  bool force = false,
-}) async {
-  if (!Platform.isAndroid) return;
-  final sig = (
-    enabled,
-    scheme.primary.toARGB32(),
-    scheme.onPrimary.toARGB32(),
-    scheme.surfaceContainerHigh.toARGB32(),
-    scheme.onSurface.toARGB32(),
-    scheme.primaryContainer.toARGB32(),
-    scheme.onPrimaryContainer.toARGB32(),
-  );
-  if (!force && sig == _lastBubbleSig) return;
-  _lastBubbleSig = sig;
-  try {
-    await _appChannel.invokeMethod<void>('setBubbleConfig', {
-      'enabled': enabled,
-      'primary': scheme.primary.toARGB32(),
-      'onPrimary': scheme.onPrimary.toARGB32(),
-      'surface': scheme.surfaceContainerHigh.toARGB32(),
-      'onSurface': scheme.onSurface.toARGB32(),
-      'primaryContainer': scheme.primaryContainer.toARGB32(),
-      'onPrimaryContainer': scheme.onPrimaryContainer.toARGB32(),
-    });
-  } catch (_) {}
-}
-
-/// Triggers a 5-second interactive floating bubble preview on Android.
-Future<bool> previewFloatingBubble() async {
-  if (!Platform.isAndroid) return false;
-  try {
-    return (await _appChannel.invokeMethod<bool>('previewBubble')) ?? false;
-  } catch (_) {
-    return false;
-  }
 }
 
 Future<PermissionStatus> _settings([Permission p = Permission.storage]) async {

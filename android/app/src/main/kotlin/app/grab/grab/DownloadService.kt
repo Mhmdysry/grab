@@ -58,11 +58,8 @@ class DownloadService : Service() {
         /** Called with the current active jobs (title, progress 0-100). */
         fun update(context: Context, jobs: List<Pair<String, Float>>) {
             val count = jobs.size
-            val percent = if (count == 0) 0 else jobs.map { it.second.coerceIn(0f, 100f) }.average().toInt()
-            if (count != lastCount || percent != lastPercent) {
-                FloatingBubbleOverlay.update(context, count, percent, jobs.firstOrNull()?.first ?: "")
-            }
             if (count == 0 && !running) return
+            val percent = if (count == 0) 0 else jobs.map { it.second.coerceIn(0f, 100f) }.average().toInt()
             // Notifications are rate-limited by Android; only post on visible change.
             if (count == lastCount && percent == lastPercent) return
             lastCount = count
@@ -79,7 +76,6 @@ class DownloadService : Service() {
 
         /** One notification per finished job: "Saved" or "Download failed". */
         fun notifyFinished(context: Context, jobId: String, title: String, ok: Boolean) {
-            FloatingBubbleOverlay.notifyFinished(context, ok)
             val manager = context.getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED

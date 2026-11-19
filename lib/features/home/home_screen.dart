@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,7 +10,6 @@ import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/links.dart';
 import '../../core/utils/permissions.dart';
-import '../../core/widgets/morph.dart';
 import '../../core/widgets/dock_inset.dart';
 import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
@@ -16,17 +18,21 @@ import '../../core/widgets/toasts.dart';
 import '../../data/db/app_database.dart';
 import '../../data/engine/media_info.dart';
 import '../../data/settings/app_settings.dart';
-import '../detail/download_detail_screen.dart';
+import '../downloads/downloads_screen.dart';
 import 'fetch_controller.dart';
 import 'format_sheet.dart';
 import 'playlist_sheet.dart';
 import '../../core/utils/haptics.dart';
 
-/// Home: paste or share a link, fetch it, then choose a format in the sheet.
+/// Filter tabs for the Unified Downloads Hub on [HomeScreen].
+enum HomeDownloadsFilter { all, active, completed }
+
+/// Home: paste or share a link, fetch it, choose a format (or Instant Grab),
+/// and manage all active & completed downloads right on Home.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.onQueued, this.onFetch});
 
-  /// Called after a download is queued (the shell switches to Downloads).
+  /// Called after a download is queued.
   final VoidCallback? onQueued;
 
   /// Called whenever a link starts fetching, however it got here.
@@ -38,6 +44,10 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class HomeScreenState extends ConsumerState<HomeScreen> {
   final _url = TextEditingController();
+  final _downloadsHubKey = GlobalKey();
+  HomeDownloadsFilter _filter = HomeDownloadsFilter.all;
+  String? _highlightedJobId;
+  Timer? _highlightTimer;
 
   @override
   void initState() {
@@ -47,6 +57,7 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
     _url.dispose();
     super.dispose();
   }
@@ -55,6 +66,35 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
   void fetchLink(String link) {
     _url.text = link;
     _fetch();
+  }
+
+  /// Smoothly scrolls down to the Unified Downloads Hub and optionally highlights [highlightJobId].
+  void scrollToDownloads({String? highlightJobId}) {
+    if (!mounted) return;
+    if (highlightJobId != null) {
+      _highlightTimer?.cancel();
+      setState(() {
+        _highlightedJobId = highlightJobId;
+        if (_filter == HomeDownloadsFilter.completed) {
+          _filter = HomeDownloadsFilter.all;
+        }
+      });
+      _highlightTimer = Timer(const Duration(milliseconds: 1800), () {
+        if (mounted) setState(() => _highlightedJobId = null);
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _downloadsHubKey.currentContext;
+      if (ctx == null) return;
+      final m3 = context.m3;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
+        curve: m3.motion.defaultSpatialCurve,
+        alignment: 0.12,
+      );
+    });
   }
 
   Future<void> _paste() async {
@@ -69,7 +109,11 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     final queued = info.isPlaylist && info.entries.isNotEmpty
         ? await showPlaylistSheet(context, info)
         : await showFormatSheet(context);
-    if (queued) widget.onQueued?.call();
+    if (queued) {
+      final latestId = ref.read(jobsProvider).value?.firstOrNull?.id;
+      scrollToDownloads(highlightJobId: latestId);
+      widget.onQueued?.call();
+    }
   }
 
   Future<void> _instantDownload(MediaInfo info) async {
@@ -96,6 +140,7 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
         detail: info.title,
         context: context,
       );
+      scrollToDownloads(highlightJobId: jobId);
       widget.onQueued?.call();
     } else {
       await _choose(info);
@@ -109,7 +154,9 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
       DownloadMode.audioOnly => DownloadMode.videoAndAudio,
       _ => DownloadMode.video,
     };
-    ref.read(settingsProvider.notifier).update((x) => x.copyWith(defaultMode: next));
+    ref
+        .read(settingsProvider.notifier)
+        .update((x) => x.copyWith(defaultMode: next));
   }
 
   Future<void> _pickQuickQuality(AppSettings s) async {
@@ -184,6 +231,49 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(fetchControllerProvider.notifier).fetch(link);
   }
 
+  Future<void> _pauseAllActive(List<DownloadJob> activeJobs) async {
+    Haptics.medium();
+    final repo = ref.read(downloadRepositoryProvider);
+    for (final j in activeJobs) {
+      if (j.status == JobStatus.running ||
+          j.status == JobStatus.queued ||
+          j.status == JobStatus.waiting) {
+        await repo.pause(j.id);
+      }
+    }
+  }
+
+  Future<void> _resumeAllPaused(List<DownloadJob> pausedJobs) async {
+    Haptics.medium();
+    final repo = ref.read(downloadRepositoryProvider);
+    for (final j in pausedJobs) {
+      await repo.unpause(j.id);
+    }
+  }
+
+  Future<void> _retryAllFailed(List<DownloadJob> failedJobs) async {
+    Haptics.medium();
+    final repo = ref.read(downloadRepositoryProvider);
+    for (final j in failedJobs) {
+      await repo.retry(j.id);
+    }
+  }
+
+  Future<void> _clearFinished(List<DownloadJob> historyJobs) async {
+    Haptics.medium();
+    final repo = ref.read(downloadRepositoryProvider);
+    for (final j in historyJobs) {
+      await repo.remove(j.id);
+    }
+    if (!mounted) return;
+    popToast(
+      'Cleared download history',
+      icon: Icons.cleaning_services_rounded,
+      detail: 'Saved files in Library are untouched.',
+      context: context,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Open the format sheet (or Instant Grab) as soon as a fetch succeeds.
@@ -207,17 +297,50 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     final s = ref.watch(fetchControllerProvider);
     final settings = ref.watch(settingsProvider);
     final version = ref.watch(engineVersionProvider);
-    final recent = (ref.watch(jobsProvider).value ?? const <DownloadJob>[])
-        .where((j) => j.status == JobStatus.done)
-        .take(3)
+    final allJobs = ref.watch(jobsProvider).value ?? const <DownloadJob>[];
+    final activeJobs = allJobs
+        .where((j) => isActiveJobStatus(j.status))
         .toList();
+    final historyJobs = allJobs
+        .where((j) => !isActiveJobStatus(j.status))
+        .toList();
+    final completedJobs = historyJobs
+        .where((j) => j.status == JobStatus.done)
+        .toList();
+    final runningOrQueued = activeJobs
+        .where(
+          (j) =>
+              j.status == JobStatus.running ||
+              j.status == JobStatus.queued ||
+              j.status == JobStatus.waiting,
+        )
+        .toList();
+    final pausedJobs = activeJobs
+        .where((j) => j.status == JobStatus.paused)
+        .toList();
+    final failedJobs = historyJobs
+        .where(
+          (j) => j.status == JobStatus.failed || j.status == JobStatus.canceled,
+        )
+        .toList();
+
+    final visibleJobs = switch (_filter) {
+      HomeDownloadsFilter.all => [...activeJobs, ...historyJobs],
+      HomeDownloadsFilter.active => activeJobs,
+      HomeDownloadsFilter.completed => completedJobs,
+    };
+
     final detected = platformOf(extractLink(_url.text) ?? _url.text);
     final still = Pop.reduceMotion(context);
+    final cs = context.cs;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(engineVersionProvider);
+          final db = ref.read(databaseProvider);
+          db.notifyUpdates({TableUpdate.onTable(db.downloadJobs)});
+          await ref.read(downloadRepositoryProvider).resume();
         },
         child: CustomScrollView(
           slivers: [
@@ -229,11 +352,11 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                   child: ExpressiveShapeContainer(
                     polygon: ExpressivePolygon.cookie12,
                     size: 36,
-                    color: context.cs.primaryContainer,
+                    color: cs.primaryContainer,
                     child: Icon(
                       Icons.download_rounded,
                       size: 20,
-                      color: context.cs.onPrimaryContainer,
+                      color: cs.onPrimaryContainer,
                     ),
                   ),
                 ),
@@ -294,7 +417,9 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                       Haptics.selection();
                       ref
                           .read(settingsProvider.notifier)
-                          .update((x) => x.copyWith(instantGrab: !x.instantGrab));
+                          .update(
+                            (x) => x.copyWith(instantGrab: !x.instantGrab),
+                          );
                     },
                     onCycleMode: () => _cycleDefaultMode(settings),
                     onPickQuality: () => _pickQuickQuality(settings),
@@ -318,7 +443,7 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     style: TextStyle(
                       fontSize: 12,
-                      color: context.cs.onSurfaceVariant,
+                      color: cs.onSurfaceVariant,
                     ),
                   ),
                   ...switch (s.info) {
@@ -336,24 +461,117 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                     ],
                     _ => const <Widget>[],
                   },
-                  if (recent.isNotEmpty) ...[
+                  if (allJobs.isNotEmpty) ...[
                     const SizedBox(height: 28),
-                    const PopSection('Recent'),
-                    for (final (i, j) in recent.indexed)
-                      if (still)
-                        _RecentRow(job: j)
-                      else
-                        _RecentRow(job: j)
-                            .animate()
-                            .fadeIn(
-                              duration: context.m3.motion.defaultEffectsDuration,
-                              delay: (50 * i).ms,
-                            )
-                            .slideX(
-                              begin: 0.08,
-                              end: 0,
-                              curve: Curves.easeOutCubic,
+                    Row(
+                      key: _downloadsHubKey,
+                      children: [
+                        const Expanded(child: PopSection('Downloads')),
+                        if (activeJobs.isNotEmpty) ...[
+                          PopTag(
+                            '${activeJobs.length} active',
+                            color: cs.primaryContainer,
+                            foreground: cs.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (historyJobs.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: () => _clearFinished(historyJobs),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
                             ),
+                            icon: const Icon(
+                              Icons.cleaning_services_rounded,
+                              size: 16,
+                            ),
+                            label: const Text(
+                              'Clear finished',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ExpressivePillChip(
+                          label: 'All (${allJobs.length})',
+                          selected: _filter == HomeDownloadsFilter.all,
+                          onTap: () =>
+                              setState(() => _filter = HomeDownloadsFilter.all),
+                        ),
+                        ExpressivePillChip(
+                          label: 'Active (${activeJobs.length})',
+                          selected: _filter == HomeDownloadsFilter.active,
+                          onTap: () => setState(
+                            () => _filter = HomeDownloadsFilter.active,
+                          ),
+                        ),
+                        ExpressivePillChip(
+                          label: 'Completed (${completedJobs.length})',
+                          selected: _filter == HomeDownloadsFilter.completed,
+                          onTap: () => setState(
+                            () => _filter = HomeDownloadsFilter.completed,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (runningOrQueued.length > 1 ||
+                        pausedJobs.isNotEmpty ||
+                        failedJobs.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (runningOrQueued.length > 1)
+                            ExpressivePillChip(
+                              icon: Icons.pause_rounded,
+                              label: 'Pause all',
+                              onTap: () => _pauseAllActive(runningOrQueued),
+                            ),
+                          if (pausedJobs.isNotEmpty)
+                            ExpressivePillChip(
+                              icon: Icons.play_arrow_rounded,
+                              label: 'Resume all (${pausedJobs.length})',
+                              onTap: () => _resumeAllPaused(pausedJobs),
+                            ),
+                          if (failedJobs.isNotEmpty)
+                            ExpressivePillChip(
+                              icon: Icons.refresh_rounded,
+                              label: 'Retry failed (${failedJobs.length})',
+                              onTap: () => _retryAllFailed(failedJobs),
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    if (visibleJobs.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          _filter == HomeDownloadsFilter.active
+                              ? 'No active downloads right now.'
+                              : 'No completed downloads yet.',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 14,
+                          ),
+                        ),
+                      )
+                    else
+                      for (final (i, j) in visibleJobs.indexed)
+                        DownloadJobCard(
+                          key: ValueKey('home-job-${j.id}'),
+                          job: j,
+                          index: i,
+                          highlighted: j.id == _highlightedJobId,
+                        ),
                   ],
                 ],
               ),
@@ -666,85 +884,6 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-class _RecentRow extends StatelessWidget {
-  const _RecentRow({required this.job});
-
-  final DownloadJob job;
-
-  @override
-  Widget build(BuildContext context) {
-    final m3 = context.m3;
-    final cs = context.cs;
-    final mode = DownloadMode.values.byName(job.mode);
-    final audio = mode == DownloadMode.audioOnly;
-    final what = switch (mode) {
-      DownloadMode.audioOnly => job.audioFormat.toUpperCase(),
-      DownloadMode.subtitlesOnly => 'Subtitles',
-      _ => [
-        job.container.toUpperCase(),
-        if (job.maxHeight != null) '${job.maxHeight}p',
-      ].join(' · '),
-    };
-    return Padding(
-      padding: EdgeInsets.only(bottom: m3.listGap),
-      child: Morph(
-        color: cs.surfaceContainerLow,
-        page: (_) => DownloadDetailScreen(jobId: job.id),
-        builder: (context, open) => InkWell(
-          onTap: open,
-          child: Padding(
-            padding: EdgeInsets.all(m3.cardPad - 4),
-            child: Row(
-              children: [
-                PopThumb(
-                  seed: job.id,
-                  url: job.thumbnail,
-                  audio: audio,
-                  size: m3.thumbSize + 28,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        job.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      if (job.site != null)
-                        Text(
-                          job.site!,
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      PopTag(what),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: cs.onSurfaceVariant,
-                  semanticLabel: 'Open',
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Quick-Download Mode Bar on Home: toggleable Instant Grab pill plus inline
 /// mode and quality/format quick chips.
 class InstantGrabBar extends StatelessWidget {
@@ -763,8 +902,6 @@ class InstantGrabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = context.cs;
-    final m3 = context.m3;
     final on = settings.instantGrab;
     final audio = settings.defaultMode == DownloadMode.audioOnly;
     final modeLabel = switch (settings.defaultMode) {
@@ -776,79 +913,28 @@ class InstantGrabBar extends StatelessWidget {
     final qualityLabel = audio
         ? settings.audioFormat.toUpperCase()
         : (settings.maxHeight == null ? 'Best' : '${settings.maxHeight}p');
-    final side = BorderSide(
-      color: on ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
-      width: on ? 1.5 : 1.0,
-    );
-    final shape = m3.shapeStyle == M3ShapeStyle.crisp
-        ? RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: side,
-          )
-        : StadiumBorder(side: side);
 
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Semantics(
-          button: true,
-          toggled: on,
-          label: 'Instant Grab, ${on ? 'on' : 'off'}',
-          excludeSemantics: true,
-          child: GestureDetector(
-            onTap: onToggleInstant,
-            child: AnimatedContainer(
-              duration: m3.motion.resolve(
-                context,
-                m3.motion.defaultSpatialDuration,
-              ),
-              curve: m3.motion.defaultSpatialCurve,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: ShapeDecoration(
-                color: on ? cs.primaryContainer : cs.surfaceContainerHigh,
-                shape: shape,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.bolt_rounded,
-                    size: 18,
-                    color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Instant Grab',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: on ? FontWeight.w800 : FontWeight.w700,
-                      color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        ExpressivePillChip(
+          label: 'Instant Grab',
+          icon: Icons.bolt_rounded,
+          selected: on,
+          onTap: onToggleInstant,
+          semanticLabel: 'Instant Grab, ${on ? 'on' : 'off'}',
         ),
-        ActionChip(
-          avatar: Icon(
-            audio ? Icons.music_note_rounded : Icons.videocam_rounded,
-            size: 17,
-            color: cs.onSecondaryContainer,
-          ),
-          label: Text(modeLabel),
-          onPressed: onCycleMode,
+        ExpressivePillChip(
+          icon: audio ? Icons.music_note_rounded : Icons.videocam_rounded,
+          label: modeLabel,
+          onTap: onCycleMode,
         ),
-        ActionChip(
-          avatar: Icon(
-            audio ? Icons.graphic_eq_rounded : Icons.hd_rounded,
-            size: 17,
-            color: cs.onSecondaryContainer,
-          ),
-          label: Text(qualityLabel),
-          onPressed: onPickQuality,
+        ExpressivePillChip(
+          icon: audio ? Icons.graphic_eq_rounded : Icons.hd_rounded,
+          label: qualityLabel,
+          onTap: onPickQuality,
         ),
       ],
     );

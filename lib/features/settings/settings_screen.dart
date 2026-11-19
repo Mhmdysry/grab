@@ -43,13 +43,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   var _updating = false;
   var _permCheck = 0;
-  bool? _overlayAllowed;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refreshOverlayStatus();
   }
 
   @override
@@ -58,16 +56,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     super.dispose();
   }
 
-  Future<void> _refreshOverlayStatus() async {
-    final granted = await overlayPermissionGranted();
-    if (mounted) setState(() => _overlayAllowed = granted);
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
       setState(() => _permCheck++);
-      _refreshOverlayStatus();
     }
   }
 
@@ -199,77 +191,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ),
                 if (isPhone) ...[
                   const SizedBox(height: 16),
-                  const PopSection('Share & Floating Overlay'),
+                  const PopSection('Share & Quick Grab'),
                   _ShareOverlayHub(
-                    overlayAllowed: _overlayAllowed,
                     settings: s,
-                    onToggleBubble: (v) async {
+                    onToggleInstantGrab: (v) {
                       Haptics.selection();
-                      if (v && !(await overlayPermissionGranted())) {
-                        if (!mounted) return;
-                        await requestOverlayPermission(context);
-                        if (!mounted) return;
-                        await _refreshOverlayStatus();
-                      }
-                      await set((x) => x.copyWith(floatingBubbleEnabled: v));
-                      if (mounted) {
-                        await syncBubbleConfig(
-                          enabled: v,
-                          scheme: Theme.of(context).colorScheme,
-                          force: true,
-                        );
-                      }
+                      set((x) => x.copyWith(instantGrab: v));
                     },
                     onToggleKeepOpen: (v) {
                       Haptics.selection();
                       set((x) => x.copyWith(shareKeepOpen: v));
-                    },
-                    onRequestOverlay: () async {
-                      if (await overlayPermissionGranted()) {
-                        if (!mounted) return;
-                        setState(() => _overlayAllowed = true);
-                        popToast(
-                          'Appear on top is already allowed',
-                          icon: Icons.check_circle_rounded,
-                          context: context,
-                        );
-                        return;
-                      }
-                      if (!mounted) return;
-                      await requestOverlayPermission(context);
-                      await _refreshOverlayStatus();
-                    },
-                    onPreviewBubble: () async {
-                      final granted = await overlayPermissionGranted();
-                      if (!granted) {
-                        if (!mounted) return;
-                        final ok = await requestOverlayPermission(context);
-                        if (!mounted) return;
-                        await _refreshOverlayStatus();
-                        if (!ok) return;
-                      }
-                      if (!mounted) return;
-                      await syncBubbleConfig(
-                        enabled: true,
-                        scheme: Theme.of(context).colorScheme,
-                        force: true,
-                      );
-                      final started = await previewFloatingBubble();
-                      if (!mounted) return;
-                      if (started) {
-                        popToast(
-                          'Bubble preview active — drag it around!',
-                          icon: Icons.bubble_chart_rounded,
-                          context: context,
-                        );
-                      } else {
-                        popToast(
-                          'Allow "Appear on top" to preview the bubble',
-                          icon: Icons.layers_rounded,
-                          error: true,
-                          context: context,
-                        );
-                      }
                     },
                   ),
                 ],
@@ -924,51 +855,30 @@ class _StorageGroup extends ConsumerWidget {
 
 class _ShareOverlayHub extends StatelessWidget {
   const _ShareOverlayHub({
-    required this.overlayAllowed,
     required this.settings,
-    required this.onToggleBubble,
+    required this.onToggleInstantGrab,
     required this.onToggleKeepOpen,
-    required this.onRequestOverlay,
-    required this.onPreviewBubble,
   });
 
-  final bool? overlayAllowed;
   final AppSettings settings;
-  final ValueChanged<bool> onToggleBubble;
+  final ValueChanged<bool> onToggleInstantGrab;
   final ValueChanged<bool> onToggleKeepOpen;
-  final VoidCallback onRequestOverlay;
-  final VoidCallback onPreviewBubble;
 
   @override
   Widget build(BuildContext context) {
     final cs = context.cs;
-    final allowed = overlayAllowed ?? false;
     return ExpressiveGroup(
       children: [
         ExpressiveListRow(
-          title: 'Appear on top',
-          subtitle: 'Show floating progress bubble over other apps',
-          leading: Icon(Icons.layers_rounded, color: cs.primary),
-          trailing: overlayAllowed == null
-              ? null
-              : PopTag(
-                  allowed ? 'Allowed' : 'Turn on',
-                  color: allowed ? cs.primaryContainer : cs.secondaryContainer,
-                  foreground: allowed
-                      ? cs.onPrimaryContainer
-                      : cs.onSecondaryContainer,
-                ),
-          onTap: onRequestOverlay,
-        ),
-        ExpressiveListRow(
-          title: 'Floating progress bubble',
-          subtitle: 'Draggable download orb while scrolling other apps',
-          leading: Icon(Icons.bubble_chart_rounded, color: cs.primary),
+          title: 'Instant Grab',
+          subtitle:
+              'Auto-download single links with your default mode & quality',
+          leading: Icon(Icons.bolt_rounded, color: cs.primary),
           trailing: Switch(
-            value: settings.floatingBubbleEnabled,
-            onChanged: onToggleBubble,
+            value: settings.instantGrab,
+            onChanged: onToggleInstantGrab,
           ),
-          onTap: () => onToggleBubble(!settings.floatingBubbleEnabled),
+          onTap: () => onToggleInstantGrab(!settings.instantGrab),
         ),
         ExpressiveListRow(
           title: 'Keep share popup open',
@@ -982,16 +892,6 @@ class _ShareOverlayHub extends StatelessWidget {
             onChanged: onToggleKeepOpen,
           ),
           onTap: () => onToggleKeepOpen(!settings.shareKeepOpen),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          child: PopButton(
-            label: 'Preview floating bubble',
-            icon: Icons.play_circle_outline_rounded,
-            style: PopButtonStyle.tonal,
-            height: 46,
-            onPressed: onPreviewBubble,
-          ),
         ),
       ],
     );

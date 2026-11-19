@@ -314,6 +314,7 @@ ThemeData buildExpressiveTheme(
   required Brightness brightness,
   Color? dynamicSeed,
   Color? overrideSeed,
+  bool transparentBackground = false,
 }) {
   final seed = overrideSeed ??
       (settings.useDynamicColor && dynamicSeed != null
@@ -392,15 +393,19 @@ ThemeData buildExpressiveTheme(
         ),
       );
 
+  final bgFill = transparentBackground ? Colors.transparent : scheme.surface;
+
   return base.copyWith(
     extensions: [c, tokens],
-    scaffoldBackgroundColor: scheme.surface,
+    scaffoldBackgroundColor: bgFill,
+    canvasColor: bgFill,
     pageTransitionsTheme: PageTransitionsTheme(
       builders: {
         for (final p in TargetPlatform.values)
           p: _ExpressivePageTransitions(
-            scheme.surface,
+            bgFill,
             reduced: tokens.motion.isReduced,
+            transparent: transparentBackground,
           ),
       },
     ),
@@ -543,10 +548,15 @@ ThemeData popTheme({Brightness brightness = Brightness.light}) =>
 
 /// Shared-axis zoom-and-fade between pages; instant when motion is reduced.
 class _ExpressivePageTransitions extends PageTransitionsBuilder {
-  const _ExpressivePageTransitions(this.fill, {required this.reduced});
+  const _ExpressivePageTransitions(
+    this.fill, {
+    required this.reduced,
+    this.transparent = false,
+  });
 
   final Color fill;
   final bool reduced;
+  final bool transparent;
 
   @override
   Widget buildTransitions<T>(
@@ -556,7 +566,9 @@ class _ExpressivePageTransitions extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (reduced || MediaQuery.disableAnimationsOf(context)) return child;
+    if (transparent || reduced || MediaQuery.disableAnimationsOf(context)) {
+      return child;
+    }
     return SharedAxisPageTransitionsBuilder(
       transitionType: SharedAxisTransitionType.scaled,
       fillColor: fill,

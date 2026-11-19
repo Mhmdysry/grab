@@ -66,46 +66,6 @@ class AppPlugin(
                     )
                     result.success("started")
                 }
-                "canDrawOverlays" -> result.success(FloatingBubbleOverlay.hasOverlayPermission(context))
-                "requestOverlayPermission" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                        !Settings.canDrawOverlays(context)
-                    ) {
-                        start(
-                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
-                                .setData(Uri.parse("package:${context.packageName}")),
-                        )
-                    }
-                    result.success(null)
-                }
-                "setBubbleConfig" -> {
-                    val enabled = call.argument<Boolean>("enabled") ?: true
-                    val primary = call.argument<Number>("primary")?.toInt() ?: 0xFFFFC107.toInt()
-                    val onPrimary = call.argument<Number>("onPrimary")?.toInt() ?: 0xFF141414.toInt()
-                    val surface = call.argument<Number>("surface")?.toInt() ?: 0xFF1F1F1F.toInt()
-                    val onSurface = call.argument<Number>("onSurface")?.toInt() ?: 0xFFF4F4F4.toInt()
-                    val primaryContainer = call.argument<Number>("primaryContainer")?.toInt() ?: 0xFF5D4200.toInt()
-                    val onPrimaryContainer = call.argument<Number>("onPrimaryContainer")?.toInt() ?: 0xFFFFE082.toInt()
-                    FloatingBubbleOverlay.setConfig(
-                        context = context,
-                        enabled = enabled,
-                        primary = primary,
-                        onPrimary = onPrimary,
-                        surface = surface,
-                        onSurface = onSurface,
-                        primaryContainer = primaryContainer,
-                        onPrimaryContainer = onPrimaryContainer,
-                    )
-                    result.success(null)
-                }
-                "previewBubble" -> {
-                    if (FloatingBubbleOverlay.hasOverlayPermission(context)) {
-                        FloatingBubbleOverlay.showPreview(context)
-                        result.success(true)
-                    } else {
-                        result.success(false)
-                    }
-                }
                 else -> result.notImplemented()
             }
         }

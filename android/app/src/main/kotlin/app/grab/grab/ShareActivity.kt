@@ -51,17 +51,37 @@ class ShareActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        intent?.putExtra("background_mode", "transparent")
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         val hadEngine = FlutterEngineCache.getInstance().get(ENGINE_ID) != null
         val text = extractSharedText(intent)
         if (!hadEngine) pendingSharedText = text
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.decorView.setBackgroundColor(Color.TRANSPARENT)
+        ensureViewsTransparent(window.decorView)
+        window.decorView.post { ensureViewsTransparent(window.decorView) }
         activeActivity = WeakReference(this)
         suppressTransition(isOpen = true)
         if (hadEngine) {
             pendingSharedText = null
             shareChannel?.invokeMethod("sharedText", text ?: "")
+        }
+    }
+
+    private fun ensureViewsTransparent(view: android.view.View?) {
+        if (view == null) return
+        view.setBackgroundColor(Color.TRANSPARENT)
+        if (view is android.view.TextureView) {
+            view.isOpaque = false
+        } else if (view is android.view.SurfaceView) {
+            view.setZOrderOnTop(true)
+            view.holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
+        } else if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) {
+                ensureViewsTransparent(view.getChildAt(i))
+            }
         }
     }
 

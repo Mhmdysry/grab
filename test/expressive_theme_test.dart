@@ -294,22 +294,26 @@ void main() {
         await tester.tap(find.text('4'));
         expect(openedDownloads, isTrue);
 
-        // 3. Now-playing orb
+        // 3. Now-playing orb (v4: single tap = play/pause, long press = open player)
+        var openedPlayer = false;
         await tester.pumpWidget(
           wrap(
             PopDockOrb(
               playingTitle: 'Test Track',
               playingSeed: 'job-1',
               isPlaying: true,
+              playingProgress: 0.5,
               onTogglePlay: () => toggledPlay = true,
+              onOpenPlayer: () => openedPlayer = true,
             ),
           ),
         );
         await tester.pump();
         expect(tester.takeException(), isNull);
-        expect(find.byIcon(Icons.graphic_eq_rounded), findsOneWidget);
-        await tester.longPress(find.byKey(const ValueKey('orb-playing')));
+        await tester.tap(find.byKey(const ValueKey('orb-playing')));
         expect(toggledPlay, isTrue);
+        await tester.longPress(find.byKey(const ValueKey('orb-playing')));
+        expect(openedPlayer, isTrue);
       },
     );
 

@@ -955,13 +955,17 @@ class ExpressivePillChip extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontFamily: Pop.font,
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-                  color: enabled ? fg : fg.withValues(alpha: 0.4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: Pop.font,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+                    color: enabled ? fg : fg.withValues(alpha: 0.4),
+                  ),
                 ),
               ),
             ],

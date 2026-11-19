@@ -574,35 +574,31 @@ class ShareOverlayCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    if (onToggleInstantGrab != null)
-                      ExpressivePillChip(
-                        label: 'Instant Grab',
-                        icon: Icons.bolt_rounded,
-                        selected: settings.instantGrab,
-                        onTap: onToggleInstantGrab,
-                        semanticLabel:
-                            'Instant Grab, ${settings.instantGrab ? 'on' : 'off'}',
-                      )
-                    else
-                      const SizedBox(width: 48),
-                    Expanded(
-                      child: Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: cs.onSurfaceVariant.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    const SizedBox(width: 48),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 12),
+                if (onToggleInstantGrab != null) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ExpressivePillChip(
+                      label: 'Instant Grab',
+                      icon: Icons.bolt_rounded,
+                      selected: settings.instantGrab,
+                      onTap: onToggleInstantGrab,
+                      semanticLabel:
+                          'Instant Grab, ${settings.instantGrab ? 'on' : 'off'}',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 AnimatedSwitcher(
                   duration: m3.motion.resolve(
                     context,

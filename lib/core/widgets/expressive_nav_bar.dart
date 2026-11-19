@@ -279,19 +279,21 @@ class ExpressiveFloatingNavBar extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 6,
                     vertical: 7,
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (var i = 0; i < tabs.length; i++)
-                        _KodaNavTab(
-                          tab: tabs[i],
-                          tabIndex: i,
-                          selected: i == index,
-                          onTap: () => onChanged(i),
+                        Expanded(
+                          flex: i == index ? 16 : 9,
+                          child: _KodaNavTab(
+                            tab: tabs[i],
+                            tabIndex: i,
+                            selected: i == index,
+                            onTap: () => onChanged(i),
+                          ),
                         ),
                     ],
                   ),
@@ -481,7 +483,7 @@ class _KodaNavTabState extends State<_KodaNavTab>
           ),
           curve: m3.motion.defaultSpatialCurve,
           padding: EdgeInsets.symmetric(
-            horizontal: on ? 18 : 16,
+            horizontal: on ? 12 : 8,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -489,7 +491,6 @@ class _KodaNavTabState extends State<_KodaNavTab>
             borderRadius: BorderRadius.circular(pillRadius),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildAnimatedIcon(
@@ -498,38 +499,43 @@ class _KodaNavTabState extends State<_KodaNavTab>
                 color: fg,
                 still: still,
               ),
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(end: on ? 1.0 : 0.0),
-                duration: still
-                    ? Duration.zero
-                    : m3.motion.defaultSpatialDuration,
-                curve: m3.motion.defaultSpatialCurve,
-                builder: (context, t, child) {
-                  final clamped = t.clamp(0.0, 1.0);
-                  if (clamped <= 0.01) return const SizedBox.shrink();
-                  return ClipRect(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: clamped,
-                      child: Opacity(
-                        opacity: clamped,
-                        child: child,
+              Flexible(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(end: on ? 1.0 : 0.0),
+                  duration: still
+                      ? Duration.zero
+                      : m3.motion.defaultSpatialDuration,
+                  curve: m3.motion.defaultSpatialCurve,
+                  builder: (context, t, child) {
+                    final clamped = t.clamp(0.0, 1.0);
+                    if (clamped <= 0.01) return const SizedBox.shrink();
+                    return ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: clamped,
+                        child: Opacity(
+                          opacity: clamped,
+                          child: child,
+                        ),
                       ),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    widget.tab.label,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontFamily: Pop.font,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: cs.onPrimaryContainer,
-                      letterSpacing: -0.1,
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 7),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        widget.tab.label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontFamily: Pop.font,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onPrimaryContainer,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
                     ),
                   ),
                 ),

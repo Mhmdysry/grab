@@ -11,10 +11,16 @@ import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import 'audio_player_screen.dart';
 import 'library_items.dart';
+import '../../core/utils/desktop_open.dart';
 import '../../core/utils/haptics.dart';
 
 /// Audio opens the background-capable audio player; video the video player.
+/// On Linux, opens the file directly in the system media player via `xdg-open`.
 void openPlayer(BuildContext context, LibraryItem item) {
+  if (Platform.isLinux) {
+    openPathExternally(item.path);
+    return;
+  }
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => item.kind == LibraryKind.audio

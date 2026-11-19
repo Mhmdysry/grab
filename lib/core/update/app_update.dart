@@ -127,6 +127,14 @@ class Release {
   /// The download for this device: the right APK on Android, the macOS or
   /// Windows package on a computer.
   ReleaseAsset? assetFor(List<String> abis) {
+    if (Platform.isLinux) {
+      return assets
+              .where((a) => a.name.toLowerCase().endsWith('.appimage'))
+              .firstOrNull ??
+          assets
+              .where((a) => a.name.toLowerCase().contains('linux'))
+              .firstOrNull;
+    }
     if (Platform.isMacOS || Platform.isWindows) {
       final key = Platform.isMacOS ? 'macos' : 'windows';
       return assets
@@ -261,6 +269,10 @@ Future<InstallAttemptResult> installUpdateWithDetails(
   File file, {
   bool directViewFallback = false,
 }) async {
+  if (Platform.isLinux) {
+    await Process.start('xdg-open', [file.parent.path], mode: ProcessStartMode.detached);
+    return const InstallAttemptResult(status: 'started');
+  }
   if (Platform.isMacOS) {
     await Process.run('open', [file.path]);
     return const InstallAttemptResult(status: 'started');
@@ -300,7 +312,9 @@ Future<bool> installUpdate(File file) async {
 }
 
 Future<void> openUrl(String url) async {
-  if (Platform.isMacOS) {
+  if (Platform.isLinux) {
+    await Process.start('xdg-open', [url], mode: ProcessStartMode.detached);
+  } else if (Platform.isMacOS) {
     await Process.run('open', [url]);
   } else if (Platform.isWindows) {
     await Process.run('rundll32', ['url.dll,FileProtocolHandler', url]);

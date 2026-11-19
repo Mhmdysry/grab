@@ -7,8 +7,10 @@ All notable changes in **Grab Expressive** (a Material 3 Expressive fork of [`As
 ## [Latest] — Release Notes
 
 ### Highlights
-- **Unified Cross-Platform Releases (Android + Windows + macOS)**: Chained `.github/workflows/desktop.yml` from `.github/workflows/android.yml` via `workflow_call` so every GitHub Release automatically builds and attaches Android APKs (`arm64-v8a`, `armeabi-v7a`, `x86_64`), Windows (`grab-windows-x64.zip`), and macOS (`grab-macos.dmg`) together.
-- **Updated `README.md`**: Added direct download links and installation instructions for Android, macOS, and Windows pointing to `Mhmdysry/grab` releases.
+- **Linux Desktop Support (`.AppImage`, `.deb`, `.tar.gz`)**:
+  - Added Linux `yt-dlp_linux` / `yt-dlp_linux_aarch64` and `FFmpeg` auto-setup in `DesktopEngine`.
+  - Added lightweight system playback via `xdg-open` on Linux for saved videos, audio files, updates, and links.
+  - Added automated Linux CI builds on `ubuntu-latest` attaching `grab-linux-x64.AppImage`, `grab-linux-x64.deb`, and `grab-linux-x64.tar.gz` to every GitHub Release alongside Android, Windows, and macOS.
 
 ---
 

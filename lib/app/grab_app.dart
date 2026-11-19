@@ -428,13 +428,13 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
           bottomNavigationBar: ValueListenableBuilder(
             valueListenable: AudioPlayback.current,
             builder: (context, playing, _) => StreamBuilder<bool>(
-              stream: AudioPlayback.player.playingStream,
-              initialData: AudioPlayback.player.playing,
+              stream: AudioPlayback.playingStream,
+              initialData: AudioPlayback.isPlaying,
               builder: (context, snap) => StreamBuilder<Duration>(
-                stream: AudioPlayback.player.positionStream,
-                initialData: AudioPlayback.player.position,
+                stream: AudioPlayback.positionStream,
+                initialData: AudioPlayback.position,
                 builder: (context, posSnap) {
-                  final dur = AudioPlayback.player.duration;
+                  final dur = AudioPlayback.duration;
                   final pos = posSnap.data ?? Duration.zero;
                   final double? playingProgress =
                       dur == null || dur.inMilliseconds <= 0

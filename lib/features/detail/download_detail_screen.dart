@@ -150,7 +150,7 @@ class DownloadDetailScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
               children: [
                 if (preview != null)
-                  kindOf(preview) == LibraryKind.audio
+                  (kindOf(preview) == LibraryKind.audio || Platform.isLinux)
                       ? _AudioPreview(
                           key: ValueKey('audio:$preview'),
                           path: preview,
@@ -308,8 +308,8 @@ class _AudioPreview extends StatelessWidget {
       builder: (context, current, _) {
         final isThisTrack = current?.path == path;
         return StreamBuilder<bool>(
-          stream: AudioPlayback.player.playingStream,
-          initialData: AudioPlayback.player.playing,
+          stream: AudioPlayback.playingStream,
+          initialData: AudioPlayback.isPlaying,
           builder: (context, snap) {
             final isPlaying = isThisTrack && (snap.data ?? false);
             return ClipRRect(
@@ -324,7 +324,7 @@ class _AudioPreview extends StatelessWidget {
                       child: PopThumb(
                         seed: job.id,
                         url: job.thumbnail,
-                        audio: true,
+                        audio: kindOf(path) == LibraryKind.audio,
                         size: double.infinity,
                         radius: BorderRadius.zero,
                       ),

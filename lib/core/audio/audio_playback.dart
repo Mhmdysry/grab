@@ -6,12 +6,22 @@ import 'package:just_audio_background/just_audio_background.dart';
 
 import '../../features/library/library_items.dart';
 import '../log/app_log.dart';
+import '../utils/desktop_open.dart';
 import '../utils/platform.dart';
 
 /// The one audio player in the app. It keeps playing with the screen off or the
 /// app in the background, with controls in the notification and on the lock screen.
 abstract final class AudioPlayback {
-  static final player = AudioPlayer();
+  static final AudioPlayer? _player = Platform.isLinux ? null : AudioPlayer();
+  static AudioPlayer get player => _player!;
+
+  static Stream<bool> get playingStream =>
+      _player?.playingStream ?? Stream<bool>.value(false);
+  static bool get isPlaying => _player?.playing ?? false;
+  static Stream<Duration> get positionStream =>
+      _player?.positionStream ?? Stream<Duration>.value(Duration.zero);
+  static Duration get position => _player?.position ?? Duration.zero;
+  static Duration? get duration => _player?.duration;
 
   /// What is loaded (playing or paused); null when stopped.
   static final current = ValueNotifier<LibraryItem?>(null);
@@ -63,6 +73,12 @@ abstract final class AudioPlayback {
 
   /// Loads [item] (unless it is already loaded) and plays it.
   static Future<void> play(LibraryItem item) async {
+    if (Platform.isLinux) {
+      await openPathExternally(item.path);
+      return;
+    }
+    final p = _player;
+    if (p == null) return;
     try {
       await init();
       AppLog.info(
@@ -78,7 +94,7 @@ abstract final class AudioPlayback {
           );
           return;
         }
-        await player.setAudioSource(
+        await p.setAudioSource(
           AudioSource.file(
             item.path,
             tag: MediaItem(
@@ -91,7 +107,7 @@ abstract final class AudioPlayback {
         );
         current.value = item;
       }
-      await player.play();
+      await p.play();
     } catch (e, st) {
       AppLog.error(
         'AudioPlayback',
@@ -103,11 +119,13 @@ abstract final class AudioPlayback {
   }
 
   static Future<void> toggle() async {
+    final p = _player;
+    if (p == null) return;
     try {
-      if (player.playing) {
-        await player.pause();
+      if (p.playing) {
+        await p.pause();
       } else {
-        await player.play();
+        await p.play();
       }
     } catch (e, st) {
       AppLog.error('AudioPlayback', 'toggle failed', error: e, stackTrace: st);
@@ -120,8 +138,13 @@ abstract final class AudioPlayback {
   }
 
   static Future<void> stop() async {
+    final p = _player;
+    if (p == null) {
+      current.value = null;
+      return;
+    }
     try {
-      await player.stop();
+      await p.stop();
       current.value = null;
     } catch (e, st) {
       AppLog.error('AudioPlayback', 'stop failed', error: e, stackTrace: st);

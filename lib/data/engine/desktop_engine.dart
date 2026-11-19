@@ -28,6 +28,7 @@ class DesktopEngine implements Engine {
   Future<List<String>> activeIds() async => _running.keys.toList();
 
   static bool get _win => Platform.isWindows;
+  static bool get _linux => Platform.isLinux;
   String get _ytdlp => p.join(_bin.path, _win ? 'yt-dlp.exe' : 'yt-dlp');
 
   // ---- setup ----
@@ -40,7 +41,19 @@ class DesktopEngine implements Engine {
     );
     await _bin.create(recursive: true);
     if (!File(_ytdlp).existsSync()) {
-      final asset = _win ? 'yt-dlp.exe' : 'yt-dlp_macos';
+      final String asset;
+      if (_win) {
+        asset = 'yt-dlp.exe';
+      } else if (_linux) {
+        final arch = (await Process.run('uname', [
+          '-m',
+        ])).stdout.toString().trim();
+        asset = (arch == 'aarch64' || arch == 'arm64')
+            ? 'yt-dlp_linux_aarch64'
+            : 'yt-dlp_linux';
+      } else {
+        asset = 'yt-dlp_macos';
+      }
       await _download(
         'https://github.com/yt-dlp/yt-dlp/releases/latest/download/$asset',
         File(_ytdlp),
@@ -59,6 +72,7 @@ class DesktopEngine implements Engine {
       ...(Platform.environment['PATH'] ?? '').split(_win ? ';' : ':'),
       '/opt/homebrew/bin',
       '/usr/local/bin',
+      '/usr/bin',
     ]) {
       if (dir.isNotEmpty &&
           File(p.join(dir, exe)).existsSync() &&
@@ -74,6 +88,33 @@ class DesktopEngine implements Engine {
         zip,
       );
       await _unzipBinaries(zip, ours, {'ffmpeg.exe', 'ffprobe.exe'});
+    } else if (_linux) {
+      final arch = (await Process.run('uname', [
+        '-m',
+      ])).stdout.toString().trim();
+      final target = (arch == 'aarch64' || arch == 'arm64')
+          ? 'linuxarm64'
+          : 'linux64';
+      final archive = File(p.join(_bin.path, 'ffmpeg.tar.xz'));
+      await _download(
+        'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-$target-gpl.tar.xz',
+        archive,
+      );
+      await Process.run('tar', [
+        '-xJf',
+        archive.path,
+        '--wildcards',
+        '--strip-components=2',
+        '-C',
+        ours.path,
+        '*/bin/ffmpeg',
+        '*/bin/ffprobe',
+      ]);
+      if (archive.existsSync()) await archive.delete();
+      for (final tool in ['ffmpeg', 'ffprobe']) {
+        final f = File(p.join(ours.path, tool));
+        if (f.existsSync()) await Process.run('chmod', ['+x', f.path]);
+      }
     } else {
       // Static macOS builds for this Mac's chip.
       final arch = (await Process.run('uname', [

@@ -9,7 +9,7 @@
 A free, open-source Android app for saving video, audio, and subtitles from TikTok, YouTube, Instagram, Pinterest, X, Facebook, and [1,800+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) — rebuilt with a Google **Material 3 Expressive** design system, a **Koda-style floating dock & shape-morphing Companion Orb**, a **translucent floating share card**, and **zero-window silent Instant Grab**.
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-141414?style=flat-square)](LICENSE)
-[![Platforms: Android, macOS, Windows](https://img.shields.io/badge/platforms-Android%20·%20macOS%20·%20Windows-FFD84D?style=flat-square&labelColor=141414)](#install)
+[![Platforms: Android, macOS, Windows, Linux](https://img.shields.io/badge/platforms-Android%20·%20macOS%20·%20Windows%20·%20Linux-FFD84D?style=flat-square&labelColor=141414)](#install)
 [![Latest Release](https://img.shields.io/github/v/release/Mhmdysry/grab?style=flat-square&color=FFD84D&labelColor=141414)](https://github.com/Mhmdysry/grab/releases/latest)
 [![Built with Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?style=flat-square)](https://flutter.dev)
 [![Powered by yt-dlp](https://img.shields.io/badge/powered%20by-yt--dlp-FF0000?style=flat-square)](https://github.com/yt-dlp/yt-dlp)
@@ -101,6 +101,7 @@ Download the latest version from [**Releases**](https://github.com/Mhmdysry/grab
 | **Android (32-bit / x86_64)** | [`grab-expressive-v…-armeabi-v7a.apk`](https://github.com/Mhmdysry/grab/releases/latest) · [`x86_64.apk`](https://github.com/Mhmdysry/grab/releases/latest) | Android 7.0 (API 24) or newer |
 | **macOS** | [`grab-macos.dmg`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-macos.dmg) | macOS 12 or newer, Apple silicon or Intel |
 | **Windows** | [`grab-windows-x64.zip`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-windows-x64.zip) | Windows 10 or 11, 64-bit |
+| **Linux (x64)** | [`grab-linux-x64.AppImage`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-linux-x64.AppImage) · [`.deb`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-linux-x64.deb) · [`.tar.gz`](https://github.com/Mhmdysry/grab/releases/latest/download/grab-linux-x64.tar.gz) | Ubuntu 22.04+ / modern 64-bit Linux (GTK 3) |
 
 ### Android
 Open the APK and allow your browser or file manager to install apps when asked. Subsequent updates install cleanly in place from inside the app (**Settings → About → Check now**), preserving all downloads, settings, and history.
@@ -114,6 +115,12 @@ Open the APK and allow your browser or file manager to install apps when asked. 
 1. Unzip `grab-windows-x64.zip` anywhere (for example, `Documents\Grab`).
 2. Run `Grab.exe`. If SmartScreen warns about an unknown publisher, choose **More info → Run anyway**.
 3. On first launch, Grab automatically fetches `yt-dlp` and `FFmpeg` into its folder.
+
+### Linux
+- **AppImage**: `chmod +x grab-linux-x64.AppImage && ./grab-linux-x64.AppImage`
+- **Debian / Ubuntu (`.deb`)**: `sudo apt install ./grab-linux-x64.deb` then launch **Grab Expressive** from your app menu or run `grab-expressive`.
+- **Portable `.tar.gz`**: `tar -xzf grab-linux-x64.tar.gz && ./grab`
+- On first launch, Grab automatically downloads `yt-dlp` (and uses your system `ffmpeg` or fetches a static build). Saved videos and audio open in your system's default media player via `xdg-open`.
 
 ---
 

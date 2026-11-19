@@ -81,6 +81,7 @@ class _ClipPreviewState extends State<ClipPreview> {
   }
 
   Future<VideoPlayerController?> _ensure() async {
+    if (Platform.isLinux) return null;
     if (_c != null) return _c;
     if (_loading || !_playable) return null;
     setState(() => _loading = true);

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
@@ -22,81 +24,106 @@ class DownloadsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final jobs = ref.watch(jobsProvider);
     final cs = context.cs;
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: jobs.when(
-          loading: () => const Center(child: ExpressiveLoadingIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
-          data: (all) {
-            final running = all
-                .where((j) => j.status == JobStatus.running)
-                .length;
-            final waiting = all
-                .where((j) => j.status == JobStatus.queued)
-                .length;
-            final paused = all
-                .where((j) => j.status == JobStatus.paused)
-                .length;
-            final offline = all
-                .where((j) => j.status == JobStatus.waiting)
-                .length;
-            final active = all.where((j) => _isActive(j.status)).toList();
-            final history = all.where((j) => !active.contains(j)).toList();
-            final summary = active.isEmpty
-                ? 'Nothing running'
-                : [
-                    '$running active',
-                    if (waiting > 0) '$waiting waiting',
-                    if (paused > 0) '$paused paused',
-                    if (offline > 0) '$offline need connection',
-                  ].join(' · ');
+    final all = jobs.value ?? const <DownloadJob>[];
+    final running = all.where((j) => j.status == JobStatus.running).length;
+    final waiting = all.where((j) => j.status == JobStatus.queued).length;
+    final paused = all.where((j) => j.status == JobStatus.paused).length;
+    final offline = all.where((j) => j.status == JobStatus.waiting).length;
+    final active = all.where((j) => _isActive(j.status)).toList();
+    final history = all.where((j) => !active.contains(j)).toList();
+    final summary = active.isEmpty
+        ? 'Nothing running'
+        : [
+            '$running active',
+            if (waiting > 0) '$waiting waiting',
+            if (paused > 0) '$paused paused',
+            if (offline > 0) '$offline need connection',
+          ].join(' · ');
 
-            return ListView(
-              padding: EdgeInsets.fromLTRB(
-                24,
-                12,
-                24,
-                DockInset.listBottom(context),
-              ),
-              children: [
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Text(
-                      'Downloads',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.9,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (active.isNotEmpty)
-                      PopTag(
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final db = ref.read(databaseProvider);
+          db.notifyUpdates({TableUpdate.onTable(db.downloadJobs)});
+          await ref.read(downloadRepositoryProvider).resume();
+        },
+        child: CustomScrollView(
+          slivers: [
+            ExpressiveSliverHeader(
+              title: 'Downloads',
+              actions: [
+                if (active.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 20),
+                    child: Center(
+                      child: PopTag(
                         '${active.length} active',
                         color: cs.primaryContainer,
                         foreground: cs.onPrimaryContainer,
                       ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  summary,
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15),
-                ),
-                const SizedBox(height: 20),
-                if (all.isEmpty) const _Empty(),
-                for (final j in active) _JobCard(key: ValueKey(j.id), job: j),
-                if (history.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  const PopSection('History'),
-                  for (final j in history)
-                    _JobCard(key: ValueKey(j.id), job: j),
-                ],
+                    ),
+                  ),
               ],
-            );
-          },
+            ),
+            ...jobs.when(
+              loading: () => const [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: ExpressiveLoadingIndicator()),
+                ),
+              ],
+              error: (e, _) => [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: Text('$e')),
+                ),
+              ],
+              data: (_) => [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    0,
+                    24,
+                    DockInset.listBottom(context),
+                  ),
+                  sliver: SliverList.list(
+                    children: [
+                      Text(
+                        summary,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      if (all.isEmpty)
+                        ExpressiveEmptyState(
+                          icon: Icons.download_rounded,
+                          polygon: ExpressivePolygon.clover4,
+                          containerColor: cs.tertiaryContainer,
+                          iconColor: cs.onTertiaryContainer,
+                          title: 'Nothing here yet',
+                          subtitle:
+                              'Paste a link on Home, or share one to Grab from TikTok, YouTube or Pinterest.',
+                        ),
+                      for (final (i, j) in active.indexed)
+                        _JobCard(key: ValueKey(j.id), job: j, index: i),
+                      if (history.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const PopSection('History'),
+                        for (final (i, j) in history.indexed)
+                          _JobCard(
+                            key: ValueKey(j.id),
+                            job: j,
+                            index: active.length + i,
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -109,52 +136,11 @@ bool _isActive(JobStatus s) =>
     s == JobStatus.paused ||
     s == JobStatus.waiting;
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = context.cs;
-    final m3 = context.m3;
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: m3.cardRadius,
-      ),
-      child: Column(
-        children: [
-          ExpressiveShapeContainer(
-            polygon: ExpressivePolygon.clover4,
-            size: 72,
-            color: cs.tertiaryContainer,
-            child: Icon(
-              Icons.download_rounded,
-              size: 34,
-              color: cs.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Nothing here yet',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Paste a link on Home, or share one to Grab from TikTok, YouTube or Pinterest.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _JobCard extends ConsumerWidget {
-  const _JobCard({super.key, required this.job});
+  const _JobCard({super.key, required this.job, required this.index});
 
   final DownloadJob job;
+  final int index;
 
   DownloadMode get _mode => DownloadMode.values.byName(job.mode);
 
@@ -362,8 +348,15 @@ class _JobCard extends ConsumerWidget {
         ? tappable
         : tappable
               .animate()
-              .fadeIn(duration: m3.motion.defaultEffectsDuration)
-              .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+              .fadeIn(
+                duration: m3.motion.defaultEffectsDuration,
+                delay: (35 * (index % 8)).ms,
+              )
+              .slideY(
+                begin: 0.08,
+                end: 0,
+                curve: m3.motion.defaultSpatialCurve,
+              );
   }
 
   static String _eta(int s) => s >= 60 ? '${s ~/ 60}m ${s % 60}s' : '${s}s';

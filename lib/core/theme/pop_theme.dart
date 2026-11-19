@@ -313,10 +313,12 @@ ThemeData buildExpressiveTheme(
   AppSettings settings, {
   required Brightness brightness,
   Color? dynamicSeed,
+  Color? overrideSeed,
 }) {
-  final seed = settings.useDynamicColor && dynamicSeed != null
-      ? dynamicSeed
-      : settings.accentPalette.seed;
+  final seed = overrideSeed ??
+      (settings.useDynamicColor && dynamicSeed != null
+          ? dynamicSeed
+          : settings.accentPalette.seed);
 
   var scheme = ColorScheme.fromSeed(
     seedColor: seed,

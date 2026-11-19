@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -8,7 +7,7 @@ import '../theme/pop_theme.dart';
 import '../utils/audio_art.dart';
 import '../utils/haptics.dart';
 import 'expressive_shapes.dart';
-import 'gooey.dart';
+import 'morph.dart';
 
 /// Visual variant for [PopButton].
 enum PopButtonStyle { filled, tonal, outlined }
@@ -644,11 +643,43 @@ class ExpressiveListRow extends StatelessWidget {
 
 /// One tab in [PopTabBar].
 class PopTab {
-  const PopTab(this.icon, this.label, {this.badge = 0});
+  const PopTab(this.icon, this.label, {this.activeIcon, this.badge = 0});
 
   final IconData icon;
+  final IconData? activeIcon;
   final String label;
   final int badge;
+}
+
+/// Live companion orb state for the Dual-Island Split Floating Dock.
+class PopDockOrb {
+  const PopDockOrb({
+    this.playingTitle,
+    this.playingSeed,
+    this.playingThumbUrl,
+    this.isPlaying = false,
+    this.playingPageBuilder,
+    this.onOpenPlayer,
+    this.onTogglePlay,
+    this.activeDownloads = 0,
+    this.downloadProgress,
+    this.onOpenDownloads,
+    this.onPasteGrab,
+  });
+
+  final String? playingTitle;
+  final String? playingSeed;
+  final String? playingThumbUrl;
+  final bool isPlaying;
+  final WidgetBuilder? playingPageBuilder;
+  final VoidCallback? onOpenPlayer;
+  final VoidCallback? onTogglePlay;
+  final int activeDownloads;
+
+  /// `0.0..1.0` aggregate download progress, or `null` when queued/indeterminate.
+  final double? downloadProgress;
+  final VoidCallback? onOpenDownloads;
+  final VoidCallback? onPasteGrab;
 }
 
 /// 3-Mode Material 3 Expressive Navigation Bar (`floatingPill`, `dockedBar`, `minimalDock`).
@@ -658,11 +689,13 @@ class PopTabBar extends StatefulWidget {
     required this.tabs,
     required this.index,
     required this.onChanged,
+    this.orb = const PopDockOrb(),
   });
 
   final List<PopTab> tabs;
   final int index;
   final ValueChanged<int> onChanged;
+  final PopDockOrb orb;
 
   @override
   State<PopTabBar> createState() => _PopTabBarState();
@@ -690,98 +723,104 @@ class _PopTabBarState extends State<PopTabBar> {
     final m3 = context.m3;
     final cs = context.cs;
     final still = m3.motion.reduced(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final n = widget.tabs.length;
     final movingRight = widget.index > _from;
     final fast = m3.motion.fastSpatialDuration;
     final slow = m3.motion.slowSpatialDuration;
-    final radius = m3.shapeStyle == M3ShapeStyle.crisp ? 20.0 : 34.0;
+    final radius = m3.shapeStyle == M3ShapeStyle.crisp ? 20.0 : 32.0;
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: SizedBox(
-        height: 68,
-        child: ClipRSuperellipse(
-          borderRadius: BorderRadius.circular(radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                color: cs.surfaceContainerHigh.withValues(alpha: 0.90),
-                shape: RoundedSuperellipseBorder(
-                  borderRadius: BorderRadius.circular(radius),
-                  side: BorderSide(
-                    color: cs.outlineVariant.withValues(alpha: 0.65),
+        height: 64,
+        child: Row(
+          children: [
+            Expanded(
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: cs.surfaceContainerHigh,
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(radius),
+                    side: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.55),
+                    ),
                   ),
+                  shadows: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-              ),
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  const pad = 6.0;
-                  final unit = (box.maxWidth - pad * 2) / (10 * (n - 1) + 16);
-                  final w = unit * 16;
-                  double left(int i) => pad + unit * 10 * i;
-                  return Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Gooey(
-                          blur: 6,
-                          child: Stack(
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    const pad = 5.0;
+                    const activeFlex = 22.0;
+                    const idleFlex = 10.0;
+                    final unit =
+                        (box.maxWidth - pad * 2) /
+                        (idleFlex * (n - 1) + activeFlex);
+                    final w = unit * activeFlex;
+                    double left(int i) => pad + unit * idleFlex * i;
+                    final maxRight = box.maxWidth - pad;
+                    return Stack(
+                      children: [
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(end: left(widget.index)),
+                          duration: still
+                              ? Duration.zero
+                              : (movingRight ? slow : fast),
+                          curve: m3.motion.defaultSpatialCurve,
+                          builder: (_, l, _) => TweenAnimationBuilder<double>(
+                            tween: Tween(end: left(widget.index) + w),
+                            duration: still
+                                ? Duration.zero
+                                : (movingRight ? fast : slow),
+                            curve: m3.motion.defaultSpatialCurve,
+                            builder: (_, r, _) {
+                              final clampedL = l.clamp(pad, maxRight - 40);
+                              final clampedR = r.clamp(clampedL + 40, maxRight);
+                              return Positioned(
+                                left: clampedL,
+                                width: math.max(clampedR - clampedL, 40),
+                                top: pad,
+                                bottom: pad,
+                                child: DecoratedBox(
+                                  decoration: ShapeDecoration(
+                                    shape: m3.shapeStyle == M3ShapeStyle.crisp
+                                        ? RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          )
+                                        : const StadiumBorder(),
+                                    color: cs.primaryContainer,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(pad),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              TweenAnimationBuilder<double>(
-                                tween: Tween(end: left(widget.index)),
-                                duration: still
-                                    ? Duration.zero
-                                    : (movingRight ? slow : fast),
-                                curve: m3.motion.defaultSpatialCurve,
-                                builder: (_, l, _) =>
-                                    TweenAnimationBuilder<double>(
-                                      tween: Tween(end: left(widget.index) + w),
-                                      duration: still
-                                          ? Duration.zero
-                                          : (movingRight ? fast : slow),
-                                      curve: m3.motion.defaultSpatialCurve,
-                                      builder: (_, r, _) => Positioned(
-                                        left: math.min(l, r - 40),
-                                        width: math.max(r - l, 40),
-                                        top: pad,
-                                        bottom: pad,
-                                        child: DecoratedBox(
-                                          decoration: ShapeDecoration(
-                                            shape: m3.shapeStyle ==
-                                                    M3ShapeStyle.crisp
-                                                ? RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          14,
-                                                        ),
-                                                  )
-                                                : const StadiumBorder(),
-                                            color: cs.primaryContainer,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                              ),
+                              for (var i = 0; i < n; i++)
+                                _floatingTab(context, i),
                             ],
                           ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(pad),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (var i = 0; i < n; i++)
-                              _floatingTab(context, i),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 10),
+            _SmartStatusOrb(orb: widget.orb),
+          ],
         ),
       ),
     );
@@ -792,8 +831,9 @@ class _PopTabBarState extends State<PopTabBar> {
     final on = i == widget.index;
     final cs = context.cs;
     final m3 = context.m3;
+    final iconData = on ? (tab.activeIcon ?? tab.icon) : tab.icon;
     return Expanded(
-      flex: on ? 16 : 10,
+      flex: on ? 22 : 10,
       child: Semantics(
         selected: on,
         button: true,
@@ -805,52 +845,64 @@ class _PopTabBarState extends State<PopTabBar> {
             if (!on) Haptics.selection();
             widget.onChanged(i);
           },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Badge(
-                isLabelVisible: tab.badge > 0,
-                backgroundColor: cs.error,
-                textColor: cs.onError,
-                label: Text('${tab.badge}'),
-                child: AnimatedScale(
-                  scale: on ? 1.08 : 1.0,
-                  duration: m3.motion.resolve(
-                    context,
-                    m3.motion.defaultSpatialDuration,
-                  ),
-                  curve: m3.motion.defaultSpatialCurve,
-                  child: Icon(
-                    tab.icon,
-                    color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Badge(
+                  isLabelVisible: tab.badge > 0,
+                  backgroundColor: cs.error,
+                  textColor: cs.onError,
+                  label: Text('${tab.badge}'),
+                  child: AnimatedScale(
+                    scale: on ? 1.08 : 1.0,
+                    duration: m3.motion.resolve(
+                      context,
+                      m3.motion.defaultSpatialDuration,
+                    ),
+                    curve: m3.motion.defaultSpatialCurve,
+                    child: AnimatedSwitcher(
+                      duration: m3.motion.resolve(
+                        context,
+                        m3.motion.fastEffectsDuration,
+                      ),
+                      child: Icon(
+                        iconData,
+                        key: ValueKey(iconData),
+                        size: 22,
+                        color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              Flexible(
-                child: AnimatedSize(
-                  duration: m3.motion.resolve(
-                    context,
-                    m3.motion.defaultSpatialDuration,
-                  ),
-                  curve: m3.motion.effectsCurve,
-                  child: on
-                      ? Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Text(
-                            tab.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.fade,
-                            softWrap: false,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: cs.onPrimaryContainer,
+                Flexible(
+                  child: AnimatedSize(
+                    duration: m3.motion.resolve(
+                      context,
+                      m3.motion.defaultSpatialDuration,
+                    ),
+                    curve: m3.motion.effectsCurve,
+                    child: on
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 5),
+                            child: Text(
+                              tab.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.fade,
+                              softWrap: false,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: cs.onPrimaryContainer,
+                              ),
                             ),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -885,7 +937,7 @@ class _PopTabBarState extends State<PopTabBar> {
               backgroundColor: cs.error,
               textColor: cs.onError,
               label: Text('${widget.tabs[i].badge}'),
-              child: Icon(widget.tabs[i].icon),
+              child: Icon(widget.tabs[i].activeIcon ?? widget.tabs[i].icon),
             ),
             label: widget.tabs[i].label,
           ),
@@ -896,36 +948,38 @@ class _PopTabBarState extends State<PopTabBar> {
   Widget _buildMinimalDock(BuildContext context) {
     final cs = context.cs;
     final m3 = context.m3;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final radius = m3.shapeStyle == M3ShapeStyle.crisp ? 16.0 : 30.0;
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Center(
         heightFactor: 1.0,
-        child: ClipRSuperellipse(
-          borderRadius: BorderRadius.circular(radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                color: cs.surfaceContainerHigh.withValues(alpha: 0.92),
-                shape: RoundedSuperellipseBorder(
-                  borderRadius: BorderRadius.circular(radius),
-                  side: BorderSide(
-                    color: cs.outlineVariant.withValues(alpha: 0.65),
-                  ),
-                ),
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: cs.surfaceContainerHigh,
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(radius),
+              side: BorderSide(
+                color: cs.outlineVariant.withValues(alpha: 0.55),
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < widget.tabs.length; i++)
-                      _minimalTab(context, i),
-                  ],
-                ),
+            ),
+            shadows: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
               ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < widget.tabs.length; i++)
+                  _minimalTab(context, i),
+              ],
             ),
           ),
         ),
@@ -973,13 +1027,504 @@ class _PopTabBarState extends State<PopTabBar> {
               ),
               curve: m3.motion.fastSpatialCurve,
               child: Icon(
-                tab.icon,
+                on ? (tab.activeIcon ?? tab.icon) : tab.icon,
                 size: 22,
                 color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Right-hand companion orb in the Dual-Island Split Floating Dock.
+///
+/// Morphs between:
+/// 1. **Now Playing** (`playingSeed != null`): circular artwork + animated ring.
+/// 2. **Active Downloads** (`activeDownloads > 0`): radial progress ring + count.
+/// 3. **Idle**: tactile `tertiaryContainer` squircle for Quick Paste & Grab.
+class _SmartStatusOrb extends StatefulWidget {
+  const _SmartStatusOrb({required this.orb});
+
+  final PopDockOrb orb;
+
+  @override
+  State<_SmartStatusOrb> createState() => _SmartStatusOrbState();
+}
+
+class _SmartStatusOrbState extends State<_SmartStatusOrb>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  bool _needsAnimation(BuildContext context) {
+    if (context.m3.motion.reduced(context)) return false;
+    final o = widget.orb;
+    if (o.playingSeed != null && o.isPlaying) return true;
+    if (o.playingSeed == null &&
+        o.activeDownloads > 0 &&
+        o.downloadProgress == null) {
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_SmartStatusOrb old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    if (_needsAnimation(context)) {
+      if (!_spin.isAnimating) _spin.repeat();
+    } else {
+      _spin.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m3 = context.m3;
+    final o = widget.orb;
+
+    final Widget child;
+    if (o.playingSeed != null) {
+      child = _buildPlayingOrb(context, o);
+    } else if (o.activeDownloads > 0) {
+      child = _buildDownloadsOrb(context, o);
+    } else {
+      child = _buildIdleOrb(context, o);
+    }
+
+    return SizedBox(
+      width: 58,
+      height: 58,
+      child: AnimatedSwitcher(
+        duration: m3.motion.resolve(context, m3.motion.defaultSpatialDuration),
+        switchInCurve: m3.motion.defaultSpatialCurve,
+        switchOutCurve: m3.motion.effectsCurve,
+        transitionBuilder: (c, a) => FadeTransition(
+          opacity: a,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.82, end: 1.0).animate(a),
+            child: c,
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildPlayingOrb(BuildContext context, PopDockOrb o) {
+    final cs = context.cs;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    Widget content(VoidCallback? onTap, {Key? key}) => Tooltip(
+      key: key,
+      message: o.playingTitle ?? 'Now playing',
+      child: Semantics(
+        button: true,
+        label: o.playingTitle == null
+            ? 'Now playing, tap to open player'
+            : 'Now playing ${o.playingTitle}, tap to open player',
+        child: GestureDetector(
+          onTap: onTap,
+          onLongPress: o.onTogglePlay == null
+              ? null
+              : () {
+                  Haptics.medium();
+                  o.onTogglePlay!();
+                },
+          child: AnimatedBuilder(
+            animation: _spin,
+            builder: (_, _) {
+              final pulse = o.isPlaying
+                  ? 0.55 + 0.45 * math.sin(_spin.value * math.pi * 2)
+                  : 0.25;
+              return Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.surfaceContainerHigh,
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: pulse),
+                    width: o.isPlaying ? 2.5 : 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.28 : 0.08,
+                      ),
+                      blurRadius: 16,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(4),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PopThumb(
+                      seed: o.playingSeed!,
+                      url: o.playingThumbUrl,
+                      audio: true,
+                      size: 46,
+                      radius: BorderRadius.circular(23),
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: cs.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: cs.surfaceContainerHigh,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          o.isPlaying
+                              ? Icons.graphic_eq_rounded
+                              : Icons.pause_rounded,
+                          size: 12,
+                          color: cs.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (o.playingPageBuilder != null) {
+      return Morph(
+        key: const ValueKey('orb-playing'),
+        shape: const CircleBorder(),
+        color: cs.surfaceContainerHigh,
+        pageColor: cs.surface,
+        page: o.playingPageBuilder!,
+        builder: (_, open) => content(open),
+      );
+    }
+    return content(o.onOpenPlayer, key: const ValueKey('orb-playing'));
+  }
+
+  Widget _buildDownloadsOrb(BuildContext context, PopDockOrb o) {
+    final cs = context.cs;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Tooltip(
+      key: const ValueKey('orb-downloads'),
+      message: '${o.activeDownloads} active downloads',
+      child: Semantics(
+        button: true,
+        label: '${o.activeDownloads} active downloads, open Downloads',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: () {
+            Haptics.selection();
+            o.onOpenDownloads?.call();
+          },
+          child: AnimatedBuilder(
+            animation: _spin,
+            builder: (_, _) => Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cs.surfaceContainerHigh,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: CustomPaint(
+                painter: _RadialOrbPainter(
+                  progress: o.downloadProgress,
+                  sweepPhase: _spin.value * math.pi * 2,
+                  trackColor: cs.surfaceContainerHighest,
+                  activeColor: cs.primary,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${o.activeDownloads}',
+                      style: TextStyle(
+                        fontFamily: Pop.font,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIdleOrb(BuildContext context, PopDockOrb o) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = m3.shapeStyle == M3ShapeStyle.crisp ? 16.0 : 20.0;
+    return Tooltip(
+      key: const ValueKey('orb-idle'),
+      message: 'Paste & Grab link',
+      child: Semantics(
+        button: true,
+        label: 'Paste and grab link from clipboard',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: () {
+            Haptics.medium();
+            o.onPasteGrab?.call();
+          },
+          child: Container(
+            width: 58,
+            height: 58,
+            decoration: ShapeDecoration(
+              color: cs.tertiaryContainer,
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(radius),
+                side: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.45),
+                ),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.content_paste_go_rounded,
+              color: cs.onTertiaryContainer,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RadialOrbPainter extends CustomPainter {
+  const _RadialOrbPainter({
+    required this.progress,
+    required this.sweepPhase,
+    required this.trackColor,
+    required this.activeColor,
+  });
+
+  final double? progress;
+  final double sweepPhase;
+  final Color trackColor;
+  final Color activeColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 4.0;
+    final rect = Offset.zero & size;
+    final arcRect = rect.deflate(5.5);
+
+    canvas.drawArc(
+      arcRect,
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..color = trackColor
+        ..strokeWidth = stroke
+        ..style = PaintingStyle.stroke,
+    );
+
+    final activePaint = Paint()
+      ..color = activeColor
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    if (progress == null) {
+      canvas.drawArc(
+        arcRect,
+        -math.pi / 2 + sweepPhase,
+        math.pi * 0.75,
+        false,
+        activePaint,
+      );
+    } else {
+      final sweep = (progress!.clamp(0.0, 1.0) * math.pi * 2).clamp(
+        0.15,
+        math.pi * 2,
+      );
+      canvas.drawArc(arcRect, -math.pi / 2, sweep, false, activePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RadialOrbPainter old) =>
+      old.progress != progress ||
+      old.sweepPhase != sweepPhase ||
+      old.trackColor != trackColor ||
+      old.activeColor != activeColor;
+}
+
+/// Reusable Material 3 Expressive empty state with a gently rotating organic
+/// polygon emblem, expressive typography, and an optional tonal CTA pill.
+class ExpressiveEmptyState extends StatefulWidget {
+  const ExpressiveEmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.polygon = ExpressivePolygon.clover4,
+    this.containerColor,
+    this.iconColor,
+    this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final ExpressivePolygon polygon;
+  final Color? containerColor;
+  final Color? iconColor;
+  final String? actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
+
+  @override
+  State<ExpressiveEmptyState> createState() => _ExpressiveEmptyStateState();
+}
+
+class _ExpressiveEmptyStateState extends State<ExpressiveEmptyState>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 24),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (context.m3.motion.reduced(context)) {
+      _spin.stop();
+    } else if (!_spin.isAnimating) {
+      _spin.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final bg = widget.containerColor ?? cs.tertiaryContainer;
+    final fg = widget.iconColor ?? cs.onTertiaryContainer;
+
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: m3.cardRadius,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 82,
+            height: 82,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedBuilder(
+                  animation: _spin,
+                  builder: (_, _) => Transform.rotate(
+                    angle: _spin.value * math.pi * 2,
+                    child: ExpressiveShapeContainer(
+                      polygon: widget.polygon,
+                      size: 80,
+                      color: bg,
+                    ),
+                  ),
+                ),
+                Icon(widget.icon, size: 36, color: fg),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+          if (widget.subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              widget.subtitle!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
+            ),
+          ],
+          if (widget.actionLabel != null && widget.onAction != null) ...[
+            const SizedBox(height: 18),
+            PopButton(
+              label: widget.actionLabel!,
+              icon: widget.actionIcon,
+              style: PopButtonStyle.tonal,
+              expand: false,
+              height: 46,
+              onPressed: widget.onAction,
+            ),
+          ],
+        ],
       ),
     );
   }

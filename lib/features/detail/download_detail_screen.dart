@@ -10,6 +10,7 @@ import '../../core/utils/platform.dart';
 
 import '../../app/providers.dart';
 import '../../core/audio/audio_playback.dart';
+import '../../core/theme/artwork_color.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
@@ -61,122 +62,130 @@ class DownloadDetailScreen extends ConsumerWidget {
     final mode = DownloadMode.values
         .where((m) => m.name == job.mode)
         .firstOrNull;
-    final m3 = context.m3;
-    final cs = context.cs;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Remove from history',
-            onPressed: () async {
-              await ref.read(downloadRepositoryProvider).remove(job.id);
-              if (context.mounted) Navigator.pop(context);
-              popToast(
-                'Removed from history',
-                icon: Icons.history_rounded,
-                detail: 'Files on the phone were kept.',
-              );
-            },
-            icon: const Icon(Icons.delete_sweep_outlined),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-        children: [
-          if (preview != null)
-            _Preview(key: ValueKey(preview), path: preview, job: job)
-          else
-            SizedBox(
-              height: 200,
-              child: PopThumb(
-                seed: job.id,
-                url: job.thumbnail,
-                size: double.infinity,
-                radius: m3.cardRadius,
+    return ArtworkThemeScope(
+      imageUrl: job.thumbnail,
+      cacheKey: job.id,
+      child: Builder(
+        builder: (context) {
+          final m3 = context.m3;
+          final cs = context.cs;
+          return Scaffold(
+            appBar: AppBar(
+              leading: IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_rounded),
               ),
-            ),
-          const SizedBox(height: 16),
-          Text(
-            job.title,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            [
-              job.site,
-              if (mode != null) _modeLabel(mode),
-              if (job.finishedAt != null) _date(job.finishedAt!),
-            ].whereType<String>().join(' · '),
-            style: TextStyle(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: PopButton(
-                  label: 'Download again',
-                  icon: Icons.refresh_rounded,
-                  height: 52,
-                  onPressed: () {
-                    ref.read(pendingLinkProvider.notifier).set(job.url);
-                    Navigator.of(context).popUntil((r) => r.isFirst);
+              actions: [
+                IconButton(
+                  tooltip: 'Remove from history',
+                  onPressed: () async {
+                    await ref.read(downloadRepositoryProvider).remove(job.id);
+                    if (context.mounted) Navigator.pop(context);
+                    popToast(
+                      'Removed from history',
+                      icon: Icons.history_rounded,
+                      detail: 'Files on the phone were kept.',
+                    );
                   },
+                  icon: const Icon(Icons.delete_sweep_outlined),
                 ),
-              ),
-              const SizedBox(width: 10),
-              PopIconButton(
-                icon: Icons.ios_share_rounded,
-                tooltip: 'Share all files',
-                onPressed: onPhone.isEmpty
-                    ? null
-                    : () => SharePlus.instance.share(
-                        ShareParams(
-                          files: [for (final f in onPhone) XFile(f)],
-                          subject: job.title,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 6),
-              PopIconButton(
-                icon: Icons.link_rounded,
-                tooltip: 'Copy link',
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: job.url));
-                  popToast('Link copied', icon: Icons.link_rounded);
-                },
-              ),
-            ],
-          ),
-          if (videos.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            const PopSection('Extract audio'),
-            _ExtractCard(job: job, videos: videos, extraction: extraction),
-          ],
-          const SizedBox(height: 24),
-          PopSection('Files · ${files.length}'),
-          if (files.isEmpty)
-            Text(
-              'No files recorded for this download.',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            )
-          else
-            ExpressiveGroup(
-              children: [
-                for (final f in files) _FileRow(path: f, job: job),
               ],
             ),
-        ],
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+              children: [
+                if (preview != null)
+                  _Preview(key: ValueKey(preview), path: preview, job: job)
+                else
+                  SizedBox(
+                    height: 200,
+                    child: PopThumb(
+                      seed: job.id,
+                      url: job.thumbnail,
+                      size: double.infinity,
+                      radius: m3.cardRadius,
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  job.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    job.site,
+                    if (mode != null) _modeLabel(mode),
+                    if (job.finishedAt != null) _date(job.finishedAt!),
+                  ].whereType<String>().join(' · '),
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: PopButton(
+                        label: 'Download again',
+                        icon: Icons.refresh_rounded,
+                        height: 52,
+                        onPressed: () {
+                          ref.read(pendingLinkProvider.notifier).set(job.url);
+                          Navigator.of(context).popUntil((r) => r.isFirst);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    PopIconButton(
+                      icon: Icons.ios_share_rounded,
+                      tooltip: 'Share all files',
+                      onPressed: onPhone.isEmpty
+                          ? null
+                          : () => SharePlus.instance.share(
+                              ShareParams(
+                                files: [for (final f in onPhone) XFile(f)],
+                                subject: job.title,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(width: 6),
+                    PopIconButton(
+                      icon: Icons.link_rounded,
+                      tooltip: 'Copy link',
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: job.url));
+                        popToast('Link copied', icon: Icons.link_rounded);
+                      },
+                    ),
+                  ],
+                ),
+                if (videos.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  const PopSection('Extract audio'),
+                  _ExtractCard(job: job, videos: videos, extraction: extraction),
+                ],
+                const SizedBox(height: 24),
+                PopSection('Files · ${files.length}'),
+                if (files.isEmpty)
+                  Text(
+                    'No files recorded for this download.',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  )
+                else
+                  ExpressiveGroup(
+                    children: [
+                      for (final f in files) _FileRow(path: f, job: job),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

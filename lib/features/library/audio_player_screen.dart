@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/audio/audio_playback.dart';
+import '../../core/theme/artwork_color.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
+import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../data/engine/media_info.dart';
@@ -43,200 +45,230 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = context.cs;
-    final m3 = context.m3;
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Close player, keep playing',
-                  color: cs.onSurface,
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Stop',
-                  color: cs.onSurfaceVariant,
-                  onPressed: () {
-                    AudioPlayback.stop();
-                    Navigator.pop(context);
-                  },
-                  icon: const Icon(Icons.stop_rounded),
-                ),
-              ],
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(36, 12, 36, 24),
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: PopThumb(
-                      seed: widget.item.jobId,
-                      url: widget.item.thumbnail,
-                      audio: true,
-                      size: double.infinity,
-                      radius: m3.cardRadius,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+    return ArtworkThemeScope(
+      imageUrl: widget.item.thumbnail,
+      cacheKey: widget.item.jobId,
+      child: Builder(
+        builder: (context) {
+          final cs = context.cs;
+          final m3 = context.m3;
+          return Scaffold(
+            backgroundColor: cs.surface,
+            body: SafeArea(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 22,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _error != null
-                        ? "Can't play this file."
-                        : widget.item.site ?? widget.item.ext,
-                    style: TextStyle(
-                      color: _error != null ? cs.error : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            StreamBuilder<Duration>(
-              stream: _p.positionStream,
-              builder: (context, _) {
-                final total = _p.duration ?? Duration.zero;
-                final pos = _p.position > total ? total : _p.position;
-                final ms = total.inMilliseconds;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
+                  Row(
                     children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: cs.primary,
-                          inactiveTrackColor: cs.surfaceContainerHighest,
-                          thumbColor: cs.primary,
-                          overlayColor: cs.primary.withValues(alpha: 0.16),
-                        ),
-                        child: Slider(
-                          value: ms == 0 ? 0 : pos.inMilliseconds / ms,
-                          onChanged: (x) =>
-                              _p.seek(Duration(milliseconds: (x * ms).round())),
-                          semanticFormatterCallback: (_) =>
-                              '${_t(pos)} of ${_t(total)}',
+                      IconButton(
+                        tooltip: 'Close player, keep playing',
+                        color: cs.onSurface,
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 32,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            Text(
-                              _t(pos),
-                              style: TextStyle(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _t(total),
-                              style: TextStyle(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Stop',
+                        color: cs.onSurfaceVariant,
+                        onPressed: () {
+                          AudioPlayback.stop();
+                          Navigator.pop(context);
+                        },
+                        icon: const Icon(Icons.stop_rounded),
                       ),
                     ],
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            StreamBuilder<PlayerState>(
-              stream: _p.playerStateStream,
-              builder: (context, snap) {
-                final playing = snap.data?.playing ?? false;
-                final done =
-                    snap.data?.processingState == ProcessingState.completed;
-                final isPlaying = playing && !done;
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    PopIconButton(
-                      tooltip: 'Back 10 seconds',
-                      size: 52,
-                      icon: Icons.replay_10_rounded,
-                      onPressed: () => _seekBy(-10),
-                    ),
-                    const SizedBox(width: 20),
-                    Tooltip(
-                      message: isPlaying ? 'Pause' : 'Play',
-                      child: GestureDetector(
-                        onTap: () {
-                          Haptics.selection();
-                          if (done) {
-                            _p.seek(Duration.zero);
-                            _p.play();
-                          } else {
-                            AudioPlayback.toggle();
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: m3.motion.resolve(
-                            context,
-                            m3.motion.defaultSpatialDuration,
-                          ),
-                          curve: m3.motion.defaultSpatialCurve,
-                          width: isPlaying ? 84 : 76,
-                          height: 76,
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            borderRadius: BorderRadius.circular(
-                              isPlaying ? 22 : 38,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 40,
-                            color: cs.onPrimary,
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(36, 12, 36, 24),
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: PopThumb(
+                            seed: widget.item.jobId,
+                            url: widget.item.thumbnail,
+                            audio: true,
+                            size: double.infinity,
+                            radius: m3.cardRadius,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 20),
-                    PopIconButton(
-                      tooltip: 'Forward 10 seconds',
-                      size: 52,
-                      icon: Icons.forward_10_rounded,
-                      onPressed: () => _seekBy(10),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.item.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 22,
+                            height: 1.15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _error != null
+                              ? "Can't play this file."
+                              : widget.item.site ?? widget.item.ext,
+                          style: TextStyle(
+                            color: _error != null
+                                ? cs.error
+                                : cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                  const SizedBox(height: 12),
+                  StreamBuilder<PlayerState>(
+                    stream: _p.playerStateStream,
+                    builder: (context, stateSnap) {
+                      final playing = stateSnap.data?.playing ?? _p.playing;
+                      final done =
+                          stateSnap.data?.processingState ==
+                          ProcessingState.completed;
+                      final isPlaying = playing && !done;
+                      return StreamBuilder<Duration>(
+                        stream: _p.positionStream,
+                        builder: (context, _) {
+                          final total = _p.duration ?? Duration.zero;
+                          final pos = _p.position > total
+                              ? total
+                              : _p.position;
+                          final ms = total.inMilliseconds;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            child: Column(
+                              children: [
+                                ExpressiveWavySlider(
+                                  value: ms == 0 ? 0 : pos.inMilliseconds / ms,
+                                  isPlaying: isPlaying,
+                                  activeColor: cs.primary,
+                                  inactiveColor: cs.surfaceContainerHighest,
+                                  thumbColor: cs.primary,
+                                  semanticLabel: 'Audio position',
+                                  semanticValue: '${_t(pos)} of ${_t(total)}',
+                                  onChanged: ms == 0
+                                      ? null
+                                      : (x) => _p.seek(
+                                          Duration(
+                                            milliseconds: (x * ms).round(),
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(height: 2),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        _t(pos),
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        _t(total),
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  StreamBuilder<PlayerState>(
+                    stream: _p.playerStateStream,
+                    builder: (context, snap) {
+                      final playing = snap.data?.playing ?? false;
+                      final done =
+                          snap.data?.processingState ==
+                          ProcessingState.completed;
+                      final isPlaying = playing && !done;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          PopIconButton(
+                            tooltip: 'Back 10 seconds',
+                            size: 52,
+                            icon: Icons.replay_10_rounded,
+                            onPressed: () => _seekBy(-10),
+                          ),
+                          const SizedBox(width: 20),
+                          Tooltip(
+                            message: isPlaying ? 'Pause' : 'Play',
+                            child: GestureDetector(
+                              onTap: () {
+                                Haptics.selection();
+                                if (done) {
+                                  _p.seek(Duration.zero);
+                                  _p.play();
+                                } else {
+                                  AudioPlayback.toggle();
+                                }
+                              },
+                              child: AnimatedContainer(
+                                duration: m3.motion.resolve(
+                                  context,
+                                  m3.motion.defaultSpatialDuration,
+                                ),
+                                curve: m3.motion.defaultSpatialCurve,
+                                width: isPlaying ? 84 : 76,
+                                height: 76,
+                                decoration: BoxDecoration(
+                                  color: cs.primary,
+                                  borderRadius: BorderRadius.circular(
+                                    isPlaying ? 22 : 38,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 40,
+                                  color: cs.onPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          PopIconButton(
+                            tooltip: 'Forward 10 seconds',
+                            size: 52,
+                            icon: Icons.forward_10_rounded,
+                            onPressed: () => _seekBy(10),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                ],
+              ),
             ),
-            const SizedBox(height: 28),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

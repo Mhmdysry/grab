@@ -73,6 +73,9 @@ abstract class Engine implements DownloadEngine {
     required String format,
     String? title,
   });
+
+  /// Job ids currently running inside the native engine.
+  Future<List<String>> activeIds() async => const [];
 }
 
 /// Dart side of the Kotlin EnginePlugin (yt-dlp via youtubedl-android).
@@ -156,4 +159,13 @@ class EngineChannel implements Engine {
   @override
   Future<bool> cancel(String id) async =>
       await _methods.invokeMethod<bool>('cancel', {'id': id}) ?? false;
+
+  @override
+  Future<List<String>> activeIds() async {
+    try {
+      return await _methods.invokeListMethod<String>('activeIds') ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
 }

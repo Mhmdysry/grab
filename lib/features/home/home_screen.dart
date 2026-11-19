@@ -8,6 +8,7 @@ import '../../core/theme/pop_theme.dart';
 import '../../core/utils/links.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -101,124 +102,137 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     final still = Pop.reduceMotion(context);
 
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            12,
-            24,
-            DockInset.listBottom(context),
-          ),
-          children: [
-            Row(
-              children: [
-                ExpressiveShapeContainer(
-                  polygon: ExpressivePolygon.cookie12,
-                  size: 36,
-                  color: context.cs.primaryContainer,
-                  child: Icon(
-                    Icons.download_rounded,
-                    size: 20,
-                    color: context.cs.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Grab',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const Spacer(),
-                PopIconButton(
-                  icon: Icons.content_paste_rounded,
-                  tooltip: 'Paste link and fetch',
-                  onPressed: _paste,
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            if (still)
-              const Text(
-                'Paste a link.\nGet the file.',
-                style: TextStyle(
-                  fontSize: 46,
-                  fontWeight: FontWeight.w900,
-                  height: 1.02,
-                  letterSpacing: -1.1,
-                ),
-              )
-            else
-              const Text(
-                    'Paste a link.\nGet the file.',
-                    style: TextStyle(
-                      fontSize: 46,
-                      fontWeight: FontWeight.w900,
-                      height: 1.02,
-                      letterSpacing: -1.1,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(engineVersionProvider);
+        },
+        child: CustomScrollView(
+          slivers: [
+            ExpressiveSliverHeader(
+              title: 'Grab',
+              leading: Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Center(
+                  child: ExpressiveShapeContainer(
+                    polygon: ExpressivePolygon.cookie12,
+                    size: 36,
+                    color: context.cs.primaryContainer,
+                    child: Icon(
+                      Icons.download_rounded,
+                      size: 20,
+                      color: context.cs.onPrimaryContainer,
                     ),
-                  )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic),
-            const SizedBox(height: 24),
-            _LinkField(
-              controller: _url,
-              busy: s.info.isLoading,
-              onFetch: _fetch,
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final p in platforms)
-                  _PlatformChip(label: p, active: p == detected),
-                const _PlatformChip(label: '+ 1,800 more', active: false),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              version.when(
-                data: (v) => 'yt-dlp ${v ?? ''}',
-                loading: () => 'Starting engine…',
-                error: (e, _) => 'Engine failed to start',
+                  ),
+                ),
               ),
-              style: TextStyle(fontSize: 12, color: context.cs.onSurfaceVariant),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: PopIconButton(
+                    icon: Icons.content_paste_rounded,
+                    tooltip: 'Paste link and fetch',
+                    onPressed: _paste,
+                  ),
+                ),
+              ],
             ),
-            ...switch (s.info) {
-              AsyncLoading() => [
-                const SizedBox(height: 24),
-                const _FetchingCard(),
-              ],
-              AsyncError(:final error) => [
-                const SizedBox(height: 24),
-                _ErrorCard(message: '$error', onRetry: _fetch),
-              ],
-              AsyncData(:final value?) => [
-                const SizedBox(height: 24),
-                _ReadyCard(info: value, onOpen: () => _choose(value)),
-              ],
-              _ => const <Widget>[],
-            },
-            if (recent.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              const PopSection('Recent'),
-              for (final (i, j) in recent.indexed)
-                if (still)
-                  _RecentRow(job: j)
-                else
-                  _RecentRow(job: j)
-                      .animate()
-                      .fadeIn(
-                        duration: context.m3.motion.defaultEffectsDuration,
-                        delay: (50 * i).ms,
-                      )
-                      .slideX(begin: 0.08, end: 0, curve: Curves.easeOutCubic),
-            ],
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                8,
+                24,
+                DockInset.listBottom(context),
+              ),
+              sliver: SliverList.list(
+                children: [
+                  if (still)
+                    const Text(
+                      'Paste a link.\nGet the file.',
+                      style: TextStyle(
+                        fontSize: 44,
+                        fontWeight: FontWeight.w900,
+                        height: 1.02,
+                        letterSpacing: -1.1,
+                      ),
+                    )
+                  else
+                    const Text(
+                          'Paste a link.\nGet the file.',
+                          style: TextStyle(
+                            fontSize: 44,
+                            fontWeight: FontWeight.w900,
+                            height: 1.02,
+                            letterSpacing: -1.1,
+                          ),
+                        )
+                        .animate()
+                        .fadeIn(duration: 400.ms)
+                        .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic),
+                  const SizedBox(height: 22),
+                  _LinkField(
+                    controller: _url,
+                    busy: s.info.isLoading,
+                    onFetch: _fetch,
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final p in platforms)
+                        _PlatformChip(label: p, active: p == detected),
+                      const _PlatformChip(label: '+ 1,800 more', active: false),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    version.when(
+                      data: (v) => 'yt-dlp ${v ?? ''}',
+                      loading: () => 'Starting engine…',
+                      error: (e, _) => 'Engine failed to start',
+                    ),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.cs.onSurfaceVariant,
+                    ),
+                  ),
+                  ...switch (s.info) {
+                    AsyncLoading() => [
+                      const SizedBox(height: 24),
+                      const _FetchingCard(),
+                    ],
+                    AsyncError(:final error) => [
+                      const SizedBox(height: 24),
+                      _ErrorCard(message: '$error', onRetry: _fetch),
+                    ],
+                    AsyncData(:final value?) => [
+                      const SizedBox(height: 24),
+                      _ReadyCard(info: value, onOpen: () => _choose(value)),
+                    ],
+                    _ => const <Widget>[],
+                  },
+                  if (recent.isNotEmpty) ...[
+                    const SizedBox(height: 28),
+                    const PopSection('Recent'),
+                    for (final (i, j) in recent.indexed)
+                      if (still)
+                        _RecentRow(job: j)
+                      else
+                        _RecentRow(job: j)
+                            .animate()
+                            .fadeIn(
+                              duration: context.m3.motion.defaultEffectsDuration,
+                              delay: (50 * i).ms,
+                            )
+                            .slideX(
+                              begin: 0.08,
+                              end: 0,
+                              curve: Curves.easeOutCubic,
+                            ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),

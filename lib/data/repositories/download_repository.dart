@@ -58,7 +58,9 @@ class DownloadRepository {
     DateTime Function()? clock,
     Stream<bool>? online,
     this.retryDelay = const Duration(seconds: 20),
-  }) : _now = clock ?? DateTime.now {
+    Future<Set<String>> Function()? activeIds,
+  }) : _now = clock ?? DateTime.now,
+       _activeIds = activeIds {
     _sub = _engine.events.listen(_onEvent);
     _onlineSub = online?.listen(_onConnectivity);
   }
@@ -72,6 +74,7 @@ class DownloadRepository {
   final AppDatabase _db;
   final DownloadEngine _engine;
   final DateTime Function() _now;
+  final Future<Set<String>> Function()? _activeIds;
   int maxParallel;
 
   /// The user's file-name template, e.g. "{title} - {site}" (see [ytDlpTemplate]).
@@ -118,14 +121,21 @@ class DownloadRepository {
 
   /// Call once at app start: jobs that were running when the app died go back in the queue.
   Future<void> resume() async {
-    await (_db.update(
+    final live = _activeIds != null ? await _activeIds() : const <String>{};
+    final running = await (_db.select(
       _db.downloadJobs,
-    )..where((t) => t.status.equalsValue(JobStatus.running))).write(
-      const DownloadJobsCompanion(
-        status: Value(JobStatus.queued),
-        progress: Value(0),
-      ),
-    );
+    )..where((t) => t.status.equalsValue(JobStatus.running))).get();
+    for (final j in running) {
+      if (!live.contains(j.id)) {
+        await _set(
+          j.id,
+          const DownloadJobsCompanion(
+            status: Value(JobStatus.queued),
+            progress: Value(0),
+          ),
+        );
+      }
+    }
     await _pump();
   }
 
@@ -204,13 +214,13 @@ class DownloadRepository {
         );
       case JobStatus.running:
         _pausing.add(id);
+        await _set(
+          id,
+          const DownloadJobsCompanion(status: Value(JobStatus.paused)),
+        );
         if (!await _engine.cancel(id)) {
-          // Not started on the engine side yet: just mark it.
+          // Not started on the engine side yet: just keep it paused.
           _pausing.remove(id);
-          await _set(
-            id,
-            const DownloadJobsCompanion(status: Value(JobStatus.paused)),
-          );
           await _pump();
         }
       default:
@@ -379,7 +389,8 @@ class DownloadRepository {
         }
       case 'canceled':
         _setSpeed(e.id, null);
-        if (_pausing.remove(e.id)) {
+        final current = await _get(e.id);
+        if (_pausing.remove(e.id) || current?.status == JobStatus.paused) {
           _lastWrite.remove(e.id);
           await _set(
             e.id,

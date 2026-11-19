@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grab/core/motion/expressive_motion.dart';
+import 'package:grab/core/theme/artwork_color.dart';
 import 'package:grab/core/theme/pop_theme.dart';
+import 'package:grab/core/widgets/expressive_app_bar.dart';
 import 'package:grab/core/widgets/expressive_shapes.dart';
 import 'package:grab/core/widgets/pop_widgets.dart';
+import 'package:grab/data/engine/media_info.dart';
 import 'package:grab/data/settings/app_settings.dart';
+import 'package:grab/features/home/fetch_controller.dart';
+import 'package:grab/features/share/share_overlay_app.dart';
 
 void main() {
   group('buildExpressiveTheme', () {
@@ -61,7 +67,51 @@ void main() {
         brightness: Brightness.light,
         dynamicSeed: seed,
       );
-      expect(withDynamic.colorScheme.primary, isNot(withoutDynamic.colorScheme.primary));
+      expect(
+        withDynamic.colorScheme.primary,
+        isNot(withoutDynamic.colorScheme.primary),
+      );
+    });
+
+    test('overrideSeed applies even when useDynamicColor is false', () {
+      const artwork = Color(0xFFE91E63);
+      final base = buildExpressiveTheme(
+        const AppSettings(useDynamicColor: false),
+        brightness: Brightness.dark,
+      );
+      final tinted = buildExpressiveTheme(
+        const AppSettings(useDynamicColor: false),
+        brightness: Brightness.dark,
+        overrideSeed: artwork,
+      );
+      expect(tinted.colorScheme.primary, isNot(base.colorScheme.primary));
+    });
+  });
+
+  group('ArtworkColor extraction & cache', () {
+    test('scoreRgbaForSeed prefers saturated pixels over gray background', () {
+      final rgba = <int>[
+        // 4 gray pixels
+        120, 120, 120, 255,
+        120, 120, 120, 255,
+        120, 120, 120, 255,
+        120, 120, 120, 255,
+        // 2 vivid teal pixels
+        0, 200, 180, 255,
+        0, 200, 180, 255,
+      ];
+      final seed = scoreRgbaForSeed(rgba);
+      expect(seed, isNotNull);
+      final hsl = HSLColor.fromColor(seed!);
+      expect(hsl.saturation, greaterThan(0.5));
+    });
+
+    test('ArtworkColorCache stores and retrieves seed colors', () {
+      ArtworkColorCache.clear();
+      const c = Color(0xFF448AFF);
+      ArtworkColorCache.put('k1', c);
+      expect(ArtworkColorCache.get('k1'), c);
+      expect(ArtworkColorCache.get('missing'), isNull);
     });
   });
 
@@ -124,10 +174,27 @@ void main() {
                   index: selected,
                   onChanged: (i) => setState(() => selected = i),
                   tabs: const [
-                    PopTab(Icons.home_rounded, 'Home'),
-                    PopTab(Icons.download_rounded, 'Downloads', badge: 2),
-                    PopTab(Icons.video_library_rounded, 'Library'),
-                    PopTab(Icons.tune_rounded, 'Settings'),
+                    PopTab(
+                      Icons.home_outlined,
+                      'Home',
+                      activeIcon: Icons.home_rounded,
+                    ),
+                    PopTab(
+                      Icons.download_outlined,
+                      'Downloads',
+                      activeIcon: Icons.download_rounded,
+                      badge: 2,
+                    ),
+                    PopTab(
+                      Icons.video_library_outlined,
+                      'Library',
+                      activeIcon: Icons.video_library_rounded,
+                    ),
+                    PopTab(
+                      Icons.tune_outlined,
+                      'Settings',
+                      activeIcon: Icons.tune_rounded,
+                    ),
                   ],
                 ),
               ),
@@ -138,6 +205,284 @@ void main() {
         expect(find.text('2'), findsOneWidget);
       });
     }
+
+    testWidgets(
+      'Dual-Island Split Floating Dock orb transitions across idle, downloads, and playing states',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final theme = buildExpressiveTheme(
+          const AppSettings(
+            motionPreset: M3MotionPreset.off,
+            navStyle: M3NavStyle.floatingPill,
+            fontScale: 1.2,
+          ),
+          brightness: Brightness.light,
+        );
+
+        var pasted = false;
+        var openedDownloads = false;
+        var toggledPlay = false;
+
+        Widget wrap(PopDockOrb orb) => MaterialApp(
+          theme: theme,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: const SizedBox.expand(),
+            bottomNavigationBar: PopTabBar(
+              index: 1,
+              onChanged: (_) {},
+              tabs: const [
+                PopTab(
+                  Icons.home_outlined,
+                  'Home',
+                  activeIcon: Icons.home_rounded,
+                ),
+                PopTab(
+                  Icons.download_outlined,
+                  'Downloads',
+                  activeIcon: Icons.download_rounded,
+                  badge: 3,
+                ),
+                PopTab(
+                  Icons.video_library_outlined,
+                  'Library',
+                  activeIcon: Icons.video_library_rounded,
+                ),
+                PopTab(
+                  Icons.tune_outlined,
+                  'Settings',
+                  activeIcon: Icons.tune_rounded,
+                ),
+              ],
+              orb: orb,
+            ),
+          ),
+        );
+
+        // 1. Idle orb
+        await tester.pumpWidget(
+          wrap(PopDockOrb(onPasteGrab: () => pasted = true)),
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.byIcon(Icons.content_paste_go_rounded), findsOneWidget);
+        await tester.tap(find.byIcon(Icons.content_paste_go_rounded));
+        expect(pasted, isTrue);
+
+        // 2. Active downloads orb
+        await tester.pumpWidget(
+          wrap(
+            PopDockOrb(
+              activeDownloads: 4,
+              downloadProgress: 0.65,
+              onOpenDownloads: () => openedDownloads = true,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(find.text('4'), findsOneWidget);
+        await tester.tap(find.text('4'));
+        expect(openedDownloads, isTrue);
+
+        // 3. Now-playing orb
+        await tester.pumpWidget(
+          wrap(
+            PopDockOrb(
+              playingTitle: 'Test Track',
+              playingSeed: 'job-1',
+              isPlaying: true,
+              onTogglePlay: () => toggledPlay = true,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(find.byIcon(Icons.graphic_eq_rounded), findsOneWidget);
+        await tester.longPress(find.byKey(const ValueKey('orb-playing')));
+        expect(toggledPlay, isTrue);
+      },
+    );
+
+    testWidgets(
+      'ExpressiveWavySlider seeks on drag and handles paused/reduced motion',
+      (tester) async {
+        var current = 0.25;
+        final theme = buildExpressiveTheme(
+          const AppSettings(motionPreset: M3MotionPreset.off),
+          brightness: Brightness.dark,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 300,
+                  child: StatefulBuilder(
+                    builder: (context, setState) => ExpressiveWavySlider(
+                      value: current,
+                      isPlaying: false,
+                      semanticLabel: 'Audio scrubber',
+                      onChanged: (v) => setState(() => current = v),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(find.byType(ExpressiveWavySlider), findsOneWidget);
+        await tester.drag(
+          find.byType(ExpressiveWavySlider),
+          const Offset(80, 0),
+        );
+        await tester.pump();
+        expect(current, greaterThan(0.25));
+      },
+    );
+
+    testWidgets(
+      'ExpressiveSliverHeader and ExpressiveEmptyState pump without errors',
+      (tester) async {
+        var ctaTapped = false;
+        final theme = buildExpressiveTheme(
+          const AppSettings(motionPreset: M3MotionPreset.off),
+          brightness: Brightness.light,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: Scaffold(
+              body: CustomScrollView(
+                slivers: [
+                  const ExpressiveSliverHeader(title: 'Library'),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: ExpressiveEmptyState(
+                        icon: Icons.video_library_rounded,
+                        title: 'Empty library',
+                        subtitle: 'Your saved media appears here.',
+                        actionLabel: 'Browse',
+                        onAction: () => ctaTapped = true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        expect(find.text('Library'), findsWidgets);
+        expect(find.text('Empty library'), findsOneWidget);
+        await tester.tap(find.text('Browse'));
+        expect(ctaTapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'ShareOverlayCard compact & expanded states render without overflow at 360dp / 1.2x',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final theme = buildExpressiveTheme(
+          const AppSettings(
+            motionPreset: M3MotionPreset.off,
+            fontScale: 1.2,
+          ),
+          brightness: Brightness.light,
+        );
+
+        const info = MediaInfo(
+          url: 'https://www.youtube.com/watch?v=abc123',
+          title: 'Expressive Material 3 Showcase Video With A Long Title',
+          site: 'YouTube',
+          duration: 145,
+          subtitles: [SubtitleTrack(lang: 'en', name: 'English')],
+          formats: [
+            MediaFormat(
+              id: '137',
+              height: 1080,
+              hasVideo: true,
+              hasAudio: false,
+              bytes: 24 * 1024 * 1024,
+            ),
+            MediaFormat(
+              id: '136',
+              height: 720,
+              hasVideo: true,
+              hasAudio: false,
+              bytes: 14 * 1024 * 1024,
+            ),
+            MediaFormat(
+              id: '140',
+              hasVideo: false,
+              hasAudio: true,
+              bytes: 3 * 1024 * 1024,
+            ),
+          ],
+        );
+
+        var expanded = false;
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              theme: theme,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.2)),
+                child: child!,
+              ),
+              home: Scaffold(
+                backgroundColor: Colors.transparent,
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: StatefulBuilder(
+                    builder: (context, setState) => ShareOverlayCard(
+                      phase: ShareCardPhase.ready,
+                      fetchState: const FetchState(
+                        info: AsyncData(info),
+                        mode: DownloadMode.video,
+                      ),
+                      settings: const AppSettings(),
+                      url: info.url,
+                      expanded: expanded,
+                      onToggleExpand: () =>
+                          setState(() => expanded = !expanded),
+                      onDownload: () {},
+                      onOpenInGrab: () {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.text('1080p · 24 MB'), findsOneWidget);
+
+        // Expand into full Trim & Subtitles options
+        await tester.tap(find.text('More options · Trim & Subtitles'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Save only a part'), findsOneWidget);
+        expect(find.text('English'), findsOneWidget);
+      },
+    );
 
     testWidgets('Expressive widgets pump without errors', (tester) async {
       final theme = buildExpressiveTheme(
@@ -241,10 +586,27 @@ void main() {
                 index: 1,
                 onChanged: (_) {},
                 tabs: const [
-                  PopTab(Icons.home_rounded, 'Home'),
-                  PopTab(Icons.download_rounded, 'Downloads', badge: 3),
-                  PopTab(Icons.video_library_rounded, 'Library'),
-                  PopTab(Icons.tune_rounded, 'Settings'),
+                  PopTab(
+                    Icons.home_outlined,
+                    'Home',
+                    activeIcon: Icons.home_rounded,
+                  ),
+                  PopTab(
+                    Icons.download_outlined,
+                    'Downloads',
+                    activeIcon: Icons.download_rounded,
+                    badge: 3,
+                  ),
+                  PopTab(
+                    Icons.video_library_outlined,
+                    'Library',
+                    activeIcon: Icons.video_library_rounded,
+                  ),
+                  PopTab(
+                    Icons.tune_outlined,
+                    'Settings',
+                    activeIcon: Icons.tune_rounded,
+                  ),
                 ],
               ),
             ),

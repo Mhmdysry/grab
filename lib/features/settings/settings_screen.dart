@@ -8,9 +8,11 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/providers.dart';
 import '../../core/theme/pop_theme.dart';
+import '../../core/utils/haptics.dart';
 import '../../core/utils/permissions.dart';
 import '../../core/utils/platform.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/pop_widgets.dart';
 import '../../core/widgets/toasts.dart';
@@ -66,219 +68,235 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final app = ref.watch(_packageInfoProvider).value;
 
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            18,
-            24,
-            DockInset.listBottom(context),
-          ),
-          children: [
-            const Text(
-              'Settings',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.8,
-              ),
+      body: CustomScrollView(
+        slivers: [
+          const ExpressiveSliverHeader(title: 'Settings'),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              4,
+              24,
+              DockInset.listBottom(context),
             ),
-            const SizedBox(height: 20),
-            const PopSection('Downloads'),
-            _Group(
+            sliver: SliverList.list(
               children: [
-                _Row(
-                  label: 'Save to',
-                  value: folder == null ? s.savePath : _shortPath(folder),
-                  onTap: () => _editFolder(s),
+                const PopSection('Downloads'),
+                _Group(
+                  children: [
+                    _Row(
+                      label: 'Save to',
+                      value: folder == null ? s.savePath : _shortPath(folder),
+                      onTap: () => _editFolder(s),
+                    ),
+                    _Row(
+                      label: 'File names',
+                      value: previewFileName(s.fileTemplate),
+                      onTap: () => _editTemplate(s),
+                    ),
+                    _Row(
+                      label: 'Default mode',
+                      value: _modeLabel(s.defaultMode),
+                      onTap: () => _pick<DownloadMode>(
+                        title: 'Default mode',
+                        options: const [
+                          DownloadMode.video,
+                          DownloadMode.videoAndAudio,
+                          DownloadMode.audioOnly,
+                        ],
+                        current: s.defaultMode,
+                        label: _modeLabel,
+                        onPick: (v) => set((x) => x.copyWith(defaultMode: v)),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Default quality',
+                      value: s.maxHeight == null
+                          ? 'Best available'
+                          : '${s.maxHeight}p',
+                      onTap: () => _pick<int?>(
+                        title: 'Default quality',
+                        options: AppSettings.heights,
+                        current: s.maxHeight,
+                        label: (h) =>
+                            h == null ? 'Best available' : '${h}p or lower',
+                        onPick: (v) =>
+                            set((x) => x.copyWith(maxHeight: () => v)),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Video format',
+                      value: s.container.toUpperCase(),
+                      onTap: () => _pick<String>(
+                        title: 'Video format',
+                        options: AppSettings.containers,
+                        current: s.container,
+                        label: (c) => switch (c) {
+                          'mp4' => 'MP4 · plays everywhere',
+                          'mkv' => 'MKV · keeps every track',
+                          _ => 'WEBM · smaller files',
+                        },
+                        onPick: (v) => set((x) => x.copyWith(container: v)),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Audio format',
+                      value: s.audioFormat.toUpperCase(),
+                      onTap: () => _pick<String>(
+                        title: 'Audio format',
+                        options: AppSettings.audioFormats,
+                        current: s.audioFormat,
+                        label: (f) => switch (f) {
+                          'mp3' => 'MP3 · plays everywhere',
+                          'm4a' => 'M4A · good for Apple devices',
+                          'opus' => 'Opus · smallest files',
+                          _ => 'FLAC · lossless, large',
+                        },
+                        onPick: (v) => set((x) => x.copyWith(audioFormat: v)),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Downloads at once',
+                      value: '${s.maxParallel}',
+                      onTap: () => _pick<int>(
+                        title: 'Downloads at once',
+                        options: const [1, 2, 3],
+                        current: s.maxParallel,
+                        label: (n) => n == 1
+                            ? '1 · one after another'
+                            : '$n at the same time',
+                        onPick: (v) => set((x) => x.copyWith(maxParallel: v)),
+                      ),
+                    ),
+                    if (isPhone)
+                      ExpressiveListRow(
+                        title: 'Keep share popup open',
+                        subtitle:
+                            'Watch progress instead of returning to the app',
+                        trailing: Switch(
+                          value: s.shareKeepOpen,
+                          onChanged: (v) {
+                            Haptics.selection();
+                            set((x) => x.copyWith(shareKeepOpen: v));
+                          },
+                        ),
+                        onTap: () => set(
+                          (x) => x.copyWith(shareKeepOpen: !s.shareKeepOpen),
+                        ),
+                      ),
+                  ],
                 ),
-                _Row(
-                  label: 'File names',
-                  value: previewFileName(s.fileTemplate),
-                  onTap: () => _editTemplate(s),
-                ),
-                _Row(
-                  label: 'Default mode',
-                  value: _modeLabel(s.defaultMode),
-                  onTap: () => _pick<DownloadMode>(
-                    title: 'Default mode',
-                    options: const [
-                      DownloadMode.video,
-                      DownloadMode.videoAndAudio,
-                      DownloadMode.audioOnly,
-                    ],
-                    current: s.defaultMode,
-                    label: _modeLabel,
-                    onPick: (v) => set((x) => x.copyWith(defaultMode: v)),
-                  ),
-                ),
-                _Row(
-                  label: 'Default quality',
-                  value: s.maxHeight == null
-                      ? 'Best available'
-                      : '${s.maxHeight}p',
-                  onTap: () => _pick<int?>(
-                    title: 'Default quality',
-                    options: AppSettings.heights,
-                    current: s.maxHeight,
-                    label: (h) =>
-                        h == null ? 'Best available' : '${h}p or lower',
-                    onPick: (v) => set((x) => x.copyWith(maxHeight: () => v)),
-                  ),
-                ),
-                _Row(
-                  label: 'Video format',
-                  value: s.container.toUpperCase(),
-                  onTap: () => _pick<String>(
-                    title: 'Video format',
-                    options: AppSettings.containers,
-                    current: s.container,
-                    label: (c) => switch (c) {
-                      'mp4' => 'MP4 · plays everywhere',
-                      'mkv' => 'MKV · keeps every track',
-                      _ => 'WEBM · smaller files',
-                    },
-                    onPick: (v) => set((x) => x.copyWith(container: v)),
-                  ),
-                ),
-                _Row(
-                  label: 'Audio format',
-                  value: s.audioFormat.toUpperCase(),
-                  onTap: () => _pick<String>(
-                    title: 'Audio format',
-                    options: AppSettings.audioFormats,
-                    current: s.audioFormat,
-                    label: (f) => switch (f) {
-                      'mp3' => 'MP3 · plays everywhere',
-                      'm4a' => 'M4A · good for Apple devices',
-                      'opus' => 'Opus · smallest files',
-                      _ => 'FLAC · lossless, large',
-                    },
-                    onPick: (v) => set((x) => x.copyWith(audioFormat: v)),
-                  ),
-                ),
-                _Row(
-                  label: 'Downloads at once',
-                  value: '${s.maxParallel}',
-                  onTap: () => _pick<int>(
-                    title: 'Downloads at once',
-                    options: const [1, 2, 3],
-                    current: s.maxParallel,
-                    label: (n) => n == 1
-                        ? '1 · one after another'
-                        : '$n at the same time',
-                    onPick: (v) => set((x) => x.copyWith(maxParallel: v)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const PopSection('Storage'),
-            const _StorageGroup(),
-            const SizedBox(height: 16),
-            const PopSection('Engine'),
-            _Group(
-              children: [
-                _Row(
-                  label: 'yt-dlp',
-                  value: version.when(
-                    data: (v) => v ?? 'unknown',
-                    loading: () => 'starting…',
-                    error: (_, _) => 'failed to start',
-                  ),
+                const SizedBox(height: 16),
+                const PopSection('Storage'),
+                const _StorageGroup(),
+                const SizedBox(height: 16),
+                const PopSection('Engine'),
+                _Group(
+                  children: [
+                    _Row(
+                      label: 'yt-dlp',
+                      value: version.when(
+                        data: (v) => v ?? 'unknown',
+                        loading: () => 'starting…',
+                        error: (_, _) => 'failed to start',
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      child: PopButton(
+                        label: 'Check for engine update',
+                        icon: Icons.system_update_alt_rounded,
+                        busy: _updating,
+                        height: 48,
+                        onPressed: _updateEngine,
+                      ),
+                    ),
+                  ],
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  child: PopButton(
-                    label: 'Check for engine update',
-                    icon: Icons.system_update_alt_rounded,
-                    busy: _updating,
-                    height: 48,
-                    onPressed: _updateEngine,
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                  child: Text(
+                    'Sites change often. If a link stops working, update the engine first.',
+                    style: TextStyle(fontSize: 13, color: context.pop.muted),
                   ),
                 ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-              child: Text(
-                'Sites change often. If a link stops working, update the engine first.',
-                style: TextStyle(fontSize: 13, color: context.pop.muted),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (isPhone) ...[
-              const PopSection('Notifications'),
-              _Group(
-                children: [
-                  FutureBuilder<PermissionStatus>(
-                    key: ValueKey(_permCheck),
-                    future: notificationStatus(),
-                    builder: (context, snap) {
-                      final on = snap.data?.isGranted ?? false;
-                      return _Row(
-                        label: 'Download alerts',
-                        value: snap.data == null ? '' : (on ? 'On' : 'Off'),
-                        onTap: on
-                            ? null
-                            : () async {
-                                await requestNotifications();
-                                if (mounted) setState(() => _permCheck++);
-                              },
-                      );
-                    },
+                const SizedBox(height: 16),
+                if (isPhone) ...[
+                  const PopSection('Notifications'),
+                  _Group(
+                    children: [
+                      FutureBuilder<PermissionStatus>(
+                        key: ValueKey(_permCheck),
+                        future: notificationStatus(),
+                        builder: (context, snap) {
+                          final on = snap.data?.isGranted ?? false;
+                          return _Row(
+                            label: 'Download alerts',
+                            value: snap.data == null ? '' : (on ? 'On' : 'Off'),
+                            onTap: on
+                                ? null
+                                : () async {
+                                    await requestNotifications();
+                                    if (mounted) setState(() => _permCheck++);
+                                  },
+                          );
+                        },
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
                 ],
-              ),
-              const SizedBox(height: 16),
-            ],
-            const PopSection('Appearance & Customization'),
-            _AppearanceHeroCard(
-              settings: s,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AppearanceScreen()),
-              ),
-            ),
-            const SizedBox(height: 10),
-            PopSegmented<ThemeMode>(
-              values: const [ThemeMode.system, ThemeMode.light, ThemeMode.dark],
-              labels: const ['System', 'Light', 'Dark'],
-              selected: s.themeMode,
-              onChanged: (m) => set((x) => x.copyWith(themeMode: m)),
-            ),
-            const SizedBox(height: 16),
-            const PopSection('About'),
-            _Group(
-              children: [
-                _Row(
-                  label: 'Grab',
-                  value: app == null ? '' : 'v${app.version}',
+                const PopSection('Appearance & Customization'),
+                _AppearanceHeroCard(
+                  settings: s,
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                    MaterialPageRoute(builder: (_) => const AppearanceScreen()),
                   ),
                 ),
-                _Row(
-                  label: 'Open-source licenses',
-                  onTap: () => showLicensePage(
-                    context: context,
-                    applicationName: 'Grab',
-                    applicationVersion: app?.version,
-                    applicationLegalese:
-                        'Free software under GPL-3.0. Uses yt-dlp, FFmpeg and Python.',
+                const SizedBox(height: 10),
+                PopSegmented<ThemeMode>(
+                  values: const [
+                    ThemeMode.system,
+                    ThemeMode.light,
+                    ThemeMode.dark,
+                  ],
+                  labels: const ['System', 'Light', 'Dark'],
+                  selected: s.themeMode,
+                  onChanged: (m) => set((x) => x.copyWith(themeMode: m)),
+                ),
+                const SizedBox(height: 16),
+                const PopSection('About'),
+                _Group(
+                  children: [
+                    _Row(
+                      label: 'Grab',
+                      value: app == null ? '' : 'v${app.version}',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Open-source licenses',
+                      onTap: () => showLicensePage(
+                        context: context,
+                        applicationName: 'Grab',
+                        applicationVersion: app?.version,
+                        applicationLegalese:
+                            'Free software under GPL-3.0. Uses yt-dlp, FFmpeg and Python.',
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+                  child: Text(
+                    'Download only what you have the right to save. Respect creators and each site\'s rules.',
+                    style: TextStyle(fontSize: 12, color: context.pop.muted),
                   ),
                 ),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
-              child: Text(
-                'Download only what you have the right to save. Respect creators and each site\'s rules.',
-                style: TextStyle(fontSize: 12, color: context.pop.muted),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

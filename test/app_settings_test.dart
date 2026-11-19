@@ -25,6 +25,8 @@ void main() {
     expect(s.fontScale, 1.0);
     expect(s.hapticsEnabled, isTrue);
     expect(s.confettiEnabled, isTrue);
+    expect(s.artworkTinting, isTrue);
+    expect(s.shareKeepOpen, isFalse);
   });
 
   test('round-trips through storage', () async {
@@ -50,6 +52,8 @@ void main() {
       fontScale: 1.2,
       hapticsEnabled: false,
       confettiEnabled: false,
+      artworkTinting: false,
+      shareKeepOpen: true,
     ).save(p);
     final s = AppSettings.load(p);
     expect(s.themeMode, ThemeMode.dark);
@@ -71,6 +75,8 @@ void main() {
     expect(s.fontScale, 1.2);
     expect(s.hapticsEnabled, isFalse);
     expect(s.confettiEnabled, isFalse);
+    expect(s.artworkTinting, isFalse);
+    expect(s.shareKeepOpen, isTrue);
   });
 
   test('ignores bad stored values', () async {
@@ -116,6 +122,8 @@ void main() {
       libraryColumns: 3,
       fontScale: 1.2,
       hapticsEnabled: false,
+      artworkTinting: false,
+      shareKeepOpen: true,
     );
     final reset = custom.resetAppearance();
     expect(reset.container, 'mkv');
@@ -127,6 +135,8 @@ void main() {
     expect(reset.libraryColumns, 2);
     expect(reset.fontScale, 1.0);
     expect(reset.hapticsEnabled, isTrue);
+    expect(reset.artworkTinting, isTrue);
+    expect(reset.shareKeepOpen, isTrue);
   });
 
   test('picks the closest quality without going over', () {

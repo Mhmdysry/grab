@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:confetti/confetti.dart';
+import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,7 @@ import '../core/audio/audio_playback.dart';
 import '../core/widgets/app_scale.dart';
 import '../core/widgets/dock_inset.dart';
 import '../core/widgets/clipboard_offer.dart';
+import '../core/widgets/expressive_app_bar.dart';
 import '../features/library/audio_player_screen.dart';
 import '../core/widgets/pop_widgets.dart';
 import '../core/widgets/toasts.dart';
@@ -45,6 +47,7 @@ class GrabApp extends ConsumerWidget {
           child: MaterialApp(
             title: 'Grab',
             debugShowCheckedModeBanner: false,
+            scrollBehavior: const ExpressiveScrollBehavior(),
             theme: buildExpressiveTheme(
               settings,
               brightness: Brightness.light,
@@ -157,7 +160,29 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
 
   static const _launch = MethodChannel('grab/launch');
 
+  void _refreshDb() {
+    final db = ref.read(databaseProvider);
+    db.notifyUpdates({TableUpdate.onTable(db.downloadJobs)});
+  }
+
   void _onLaunchAction(String? action) {
+    if (action == null) return;
+    if (action == 'openDownloads') {
+      _refreshDb();
+      if (mounted) setState(() => _tab = 1);
+      return;
+    }
+    if (action.startsWith('fetch:')) {
+      final link = extractLink(action.substring(6)) ?? action.substring(6).trim();
+      if (link.isEmpty || !mounted) return;
+      _lastOffered = link;
+      _dismissOffer();
+      setState(() => _tab = 0);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _home.currentState?.fetchLink(link),
+      );
+      return;
+    }
     if (action != 'grabClipboard') return;
     // The clipboard is readable once the window has focus.
     Future.delayed(const Duration(milliseconds: 500), () async {
@@ -183,6 +208,28 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _pasteAndGrab() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final link = extractLink(data?.text);
+    if (!mounted) return;
+    if (link == null) {
+      popToast(
+        'No link in clipboard',
+        icon: Icons.link_off_rounded,
+        detail: 'Copy a video link, then tap the orb to grab.',
+        error: true,
+        context: context,
+      );
+      return;
+    }
+    _lastOffered = link;
+    _dismissOffer();
+    setState(() => _tab = 0);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _home.currentState?.fetchLink(link),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -196,6 +243,7 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Android only lets the app read the clipboard once it has focus, so wait a moment.
     if (state == AppLifecycleState.resumed) {
+      _refreshDb();
       Future.delayed(const Duration(milliseconds: 400), _offerClipboard);
     }
   }
@@ -325,8 +373,21 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
       if (after != null) _onJobsChanged(prev?.value, after);
     });
     final active = ref.watch(activeCountProvider);
+    final jobs = ref.watch(jobsProvider).value ?? const <DownloadJob>[];
+    final runningJobs = jobs
+        .where((j) => j.status == JobStatus.running)
+        .toList();
+    final double? aggregateProgress = runningJobs.isEmpty
+        ? null
+        : (runningJobs.fold<double>(
+                    0,
+                    (s, j) => s + j.progress.clamp(0, 100),
+                  ) /
+                  (runningJobs.length * 100))
+              .clamp(0.0, 1.0);
     final m3 = context.m3;
     final cs = context.cs;
+    final showMiniBar = m3.navStyle != M3NavStyle.floatingPill;
     final overlayBottom = switch (m3.navStyle) {
       M3NavStyle.floatingPill => 92.0,
       M3NavStyle.dockedBar => 84.0,
@@ -339,8 +400,10 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
           extendBody: m3.navStyle != M3NavStyle.dockedBar,
           body: ValueListenableBuilder(
             valueListenable: AudioPlayback.current,
-            builder: (context, playing, child) =>
-                DockInset(extra: playing == null ? 0 : 64, child: child!),
+            builder: (context, playing, child) => DockInset(
+              extra: showMiniBar && playing != null ? 64 : 0,
+              child: child!,
+            ),
             child: IndexedStack(
               index: _tab,
               children: [
@@ -361,15 +424,53 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
               ],
             ),
           ),
-          bottomNavigationBar: PopTabBar(
-            index: _tab,
-            onChanged: (i) => setState(() => _tab = i),
-            tabs: [
-              const PopTab(Icons.home_rounded, 'Home'),
-              PopTab(Icons.download_rounded, 'Downloads', badge: active),
-              const PopTab(Icons.video_library_rounded, 'Library'),
-              const PopTab(Icons.tune_rounded, 'Settings'),
-            ],
+          bottomNavigationBar: ValueListenableBuilder(
+            valueListenable: AudioPlayback.current,
+            builder: (context, playing, _) => StreamBuilder<bool>(
+              stream: AudioPlayback.player.playingStream,
+              initialData: AudioPlayback.player.playing,
+              builder: (context, snap) => PopTabBar(
+                index: _tab,
+                onChanged: (i) => setState(() => _tab = i),
+                tabs: [
+                  const PopTab(
+                    Icons.home_outlined,
+                    'Home',
+                    activeIcon: Icons.home_rounded,
+                  ),
+                  PopTab(
+                    Icons.download_outlined,
+                    'Downloads',
+                    activeIcon: Icons.download_rounded,
+                    badge: active,
+                  ),
+                  const PopTab(
+                    Icons.video_library_outlined,
+                    'Library',
+                    activeIcon: Icons.video_library_rounded,
+                  ),
+                  const PopTab(
+                    Icons.tune_outlined,
+                    'Settings',
+                    activeIcon: Icons.tune_rounded,
+                  ),
+                ],
+                orb: PopDockOrb(
+                  playingTitle: playing?.title,
+                  playingSeed: playing?.jobId,
+                  playingThumbUrl: playing?.thumbnail,
+                  isPlaying: snap.data ?? false,
+                  playingPageBuilder: playing == null
+                      ? null
+                      : (_) => AudioPlayerScreen(item: playing),
+                  onTogglePlay: AudioPlayback.toggle,
+                  activeDownloads: active,
+                  downloadProgress: aggregateProgress,
+                  onOpenDownloads: () => setState(() => _tab = 1),
+                  onPasteGrab: _pasteAndGrab,
+                ),
+              ),
+            ),
           ),
         ),
         Positioned(
@@ -415,8 +516,10 @@ class _ShellState extends ConsumerState<_Shell> with WidgetsBindingObserver {
                         onDismiss: _dismissOffer,
                       ),
               ),
-              const SizedBox(height: 8),
-              const MiniPlayer(),
+              if (showMiniBar) ...[
+                const SizedBox(height: 8),
+                const MiniPlayer(),
+              ],
             ],
           ),
         ),

@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import '../theme/pop_theme.dart';
+import '../utils/haptics.dart';
 
 /// Organic Material 3 Expressive geometric & scalloped shapes.
 enum ExpressivePolygon {
@@ -545,3 +546,325 @@ class _WavyTrackPainter extends CustomPainter {
       old.activeColor != activeColor ||
       old.trackColor != trackColor;
 }
+
+/// Android 16 Material 3 Expressive wavy / squiggly interactive audio scrubber.
+///
+/// Draws a traveling sine wave on the active segment while [isPlaying] is true,
+/// smoothly flattening when paused or when reduced motion is active. Features a
+/// vertical rounded pill thumb that expands slightly during dragging.
+class ExpressiveWavySlider extends StatefulWidget {
+  const ExpressiveWavySlider({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.onChangeStart,
+    this.onChangeEnd,
+    this.isPlaying = true,
+    this.activeColor,
+    this.inactiveColor,
+    this.thumbColor,
+    this.semanticLabel,
+    this.semanticValue,
+    this.height = 36,
+  });
+
+  /// Normalized progress in `0.0..1.0`.
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final ValueChanged<double>? onChangeStart;
+  final ValueChanged<double>? onChangeEnd;
+  final bool isPlaying;
+  final Color? activeColor;
+  final Color? inactiveColor;
+  final Color? thumbColor;
+  final String? semanticLabel;
+  final String? semanticValue;
+  final double height;
+
+  @override
+  State<ExpressiveWavySlider> createState() => _ExpressiveWavySliderState();
+}
+
+class _ExpressiveWavySliderState extends State<ExpressiveWavySlider>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _phase = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  var _dragging = false;
+  double? _dragValue;
+  int _lastBucket = -1;
+
+  bool _shouldAnimate(BuildContext context) =>
+      widget.isPlaying && !context.m3.motion.reduced(context);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(ExpressiveWavySlider old) {
+    super.didUpdateWidget(old);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (_shouldAnimate(context)) {
+      if (!_phase.isAnimating) _phase.repeat();
+    } else {
+      _phase.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _phase.dispose();
+    super.dispose();
+  }
+
+  double _fractionFor(double dx, double width) {
+    const pad = 10.0;
+    final usable = math.max(1.0, width - pad * 2);
+    return ((dx - pad) / usable).clamp(0.0, 1.0);
+  }
+
+  void _emit(double next) {
+    final bucket = (next * 20).round();
+    if (bucket != _lastBucket) {
+      _lastBucket = bucket;
+      Haptics.selection();
+    }
+    setState(() => _dragValue = next);
+    widget.onChanged?.call(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final reduced = m3.motion.reduced(context);
+    final active = widget.activeColor ?? cs.primary;
+    final inactive = widget.inactiveColor ?? cs.surfaceContainerHighest;
+    final thumb = widget.thumbColor ?? active;
+
+    final p = (_dragging ? (_dragValue ?? widget.value) : widget.value).clamp(
+      0.0,
+      1.0,
+    );
+    final targetAmp = widget.isPlaying && !reduced ? 3.5 : 0.0;
+    final enabled = widget.onChanged != null;
+
+    return Semantics(
+      slider: true,
+      enabled: enabled,
+      label: widget.semanticLabel,
+      value: widget.semanticValue ?? '${(p * 100).round()}%',
+      onIncrease: enabled
+          ? () => widget.onChanged!((p + 0.05).clamp(0.0, 1.0))
+          : null,
+      onDecrease: enabled
+          ? () => widget.onChanged!((p - 0.05).clamp(0.0, 1.0))
+          : null,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: !enabled
+                ? null
+                : (d) {
+                    final next = _fractionFor(d.localPosition.dx, w);
+                    _lastBucket = (next * 20).round();
+                    Haptics.selection();
+                    widget.onChangeStart?.call(next);
+                    widget.onChanged!(next);
+                    widget.onChangeEnd?.call(next);
+                  },
+            onHorizontalDragStart: !enabled
+                ? null
+                : (d) {
+                    final next = _fractionFor(d.localPosition.dx, w);
+                    _lastBucket = (next * 20).round();
+                    Haptics.selection();
+                    setState(() {
+                      _dragging = true;
+                      _dragValue = next;
+                    });
+                    widget.onChangeStart?.call(next);
+                    widget.onChanged!(next);
+                  },
+            onHorizontalDragUpdate: !enabled
+                ? null
+                : (d) => _emit(_fractionFor(d.localPosition.dx, w)),
+            onHorizontalDragEnd: !enabled
+                ? null
+                : (_) {
+                    final endVal = _dragValue ?? p;
+                    setState(() {
+                      _dragging = false;
+                      _dragValue = null;
+                    });
+                    widget.onChangeEnd?.call(endVal);
+                  },
+            onHorizontalDragCancel: !enabled
+                ? null
+                : () {
+                    setState(() {
+                      _dragging = false;
+                      _dragValue = null;
+                    });
+                  },
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: targetAmp),
+              duration: m3.motion.resolve(
+                context,
+                m3.motion.defaultEffectsDuration,
+              ),
+              curve: m3.motion.effectsCurve,
+              builder: (_, amp, _) => TweenAnimationBuilder<double>(
+                tween: Tween(end: _dragging ? 1.0 : 0.0),
+                duration: m3.motion.resolve(
+                  context,
+                  m3.motion.fastSpatialDuration,
+                ),
+                curve: m3.motion.fastSpatialCurve,
+                builder: (_, dragT, _) => AnimatedBuilder(
+                  animation: _phase,
+                  builder: (_, _) => SizedBox(
+                    height: widget.height,
+                    width: double.infinity,
+                    child: CustomPaint(
+                      painter: _WavySliderPainter(
+                        value: p,
+                        phase: _phase.value * math.pi * 2,
+                        amplitude: amp,
+                        thumbWidth: lerpDouble(4.5, 6.2, dragT)!,
+                        thumbHeight: lerpDouble(22.0, 27.0, dragT)!,
+                        activeColor: active,
+                        inactiveColor: inactive,
+                        thumbColor: thumb,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WavySliderPainter extends CustomPainter {
+  const _WavySliderPainter({
+    required this.value,
+    required this.phase,
+    required this.amplitude,
+    required this.thumbWidth,
+    required this.thumbHeight,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.thumbColor,
+  });
+
+  final double value;
+  final double phase;
+  final double amplitude;
+  final double thumbWidth;
+  final double thumbHeight;
+  final Color activeColor;
+  final Color inactiveColor;
+  final Color thumbColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    const pad = 10.0;
+    const stroke = 4.5;
+    const gap = 7.0;
+    final cy = size.height / 2;
+    final left = pad;
+    final right = math.max(left, size.width - pad);
+    final usable = right - left;
+    final thumbX = left + usable * value.clamp(0.0, 1.0);
+
+    final activePaint = Paint()
+      ..color = activeColor
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final inactivePaint = Paint()
+      ..color = inactiveColor
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    // Inactive segment to the right of the pill thumb.
+    final inactiveStart = thumbX + gap;
+    if (inactiveStart < right - 2) {
+      canvas.drawLine(
+        Offset(inactiveStart, cy),
+        Offset(right, cy),
+        inactivePaint,
+      );
+      canvas.drawCircle(
+        Offset(right, cy),
+        stroke * 0.35,
+        Paint()..color = activeColor.withValues(alpha: 0.65),
+      );
+    }
+
+    // Active wavy (or flat) segment to the left of the pill thumb.
+    final activeEnd = thumbX - gap;
+    if (activeEnd > left + 2) {
+      final span = activeEnd - left;
+      if (amplitude <= 0.1 || span < 6) {
+        canvas.drawLine(Offset(left, cy), Offset(activeEnd, cy), activePaint);
+      } else {
+        const wavelength = 22.0;
+        const k = (math.pi * 2) / wavelength;
+        final path = Path();
+        final steps = math.max(12, (span / 2.2).ceil());
+        for (var i = 0; i <= steps; i++) {
+          final x = left + (span * i / steps);
+          final taper = math.min(1.0, math.min(i / 4.0, (steps - i) / 4.0));
+          final y = cy + math.sin((x - left) * k - phase) * amplitude * taper;
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        canvas.drawPath(path, activePaint);
+      }
+    }
+
+    // Vertical rounded pill thumb.
+    final thumbRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(thumbX, cy),
+        width: thumbWidth,
+        height: thumbHeight,
+      ),
+      Radius.circular(thumbWidth / 2),
+    );
+    canvas.drawRRect(thumbRect, Paint()..color = thumbColor);
+  }
+
+  @override
+  bool shouldRepaint(_WavySliderPainter old) =>
+      old.value != value ||
+      old.phase != phase ||
+      old.amplitude != amplitude ||
+      old.thumbWidth != thumbWidth ||
+      old.thumbHeight != thumbHeight ||
+      old.activeColor != activeColor ||
+      old.inactiveColor != inactiveColor ||
+      old.thumbColor != thumbColor;
+}
+

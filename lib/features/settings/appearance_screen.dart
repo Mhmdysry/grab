@@ -274,6 +274,36 @@ class _AppearanceScreenState extends ConsumerState<AppearanceScreen> {
           ExpressiveGroup(
             children: [
               ExpressiveListRow(
+                title: 'Dynamic artwork colors',
+                subtitle: 'Tint Detail & Audio Player from media thumbnails',
+                leading: Icon(Icons.colorize_rounded, color: cs.primary),
+                trailing: Switch(
+                  value: s.artworkTinting,
+                  onChanged: (v) {
+                    Haptics.selection();
+                    _set((x) => x.copyWith(artworkTinting: v));
+                  },
+                ),
+                onTap: () => _set(
+                  (x) => x.copyWith(artworkTinting: !s.artworkTinting),
+                ),
+              ),
+              ExpressiveListRow(
+                title: 'Keep share popup open',
+                subtitle: 'Watch progress inside the floating share window',
+                leading: Icon(Icons.picture_in_picture_alt_rounded, color: cs.primary),
+                trailing: Switch(
+                  value: s.shareKeepOpen,
+                  onChanged: (v) {
+                    Haptics.selection();
+                    _set((x) => x.copyWith(shareKeepOpen: v));
+                  },
+                ),
+                onTap: () => _set(
+                  (x) => x.copyWith(shareKeepOpen: !s.shareKeepOpen),
+                ),
+              ),
+              ExpressiveListRow(
                 title: 'Haptic feedback',
                 subtitle: 'Crisp tactile taps on buttons and tabs',
                 leading: Icon(Icons.vibration_rounded, color: cs.primary),
@@ -335,6 +365,8 @@ class _LivePreviewStage extends StatefulWidget {
 
 class _LivePreviewStageState extends State<_LivePreviewStage> {
   var _playing = true;
+  var _scrub = 0.68;
+  var _dockTab = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -363,7 +395,7 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                 size: 46,
                 color: cs.primary,
                 child: Icon(
-                  Icons.download_rounded,
+                  Icons.music_note_rounded,
                   color: cs.onPrimary,
                   size: 24,
                 ),
@@ -383,7 +415,9 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Live preview · 68% · 4.2 MB/s',
+                      'Live preview · ${(_scrub * 100).round()}% · Dual-Island & Wave',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -396,12 +430,119 @@ class _LivePreviewStageState extends State<_LivePreviewStage> {
               const PopTag('1080p'),
             ],
           ),
-          const SizedBox(height: 12),
-          ExpressiveWavyProgressBar(
-            value: 0.68,
-            active: _playing,
-            color: cs.primary,
-            trackColor: cs.surfaceContainerLowest,
+          const SizedBox(height: 10),
+          ExpressiveWavySlider(
+            value: _scrub,
+            isPlaying: _playing,
+            activeColor: cs.primary,
+            inactiveColor: cs.surfaceContainerLowest,
+            thumbColor: cs.primary,
+            onChanged: (v) => setState(() => _scrub = v),
+          ),
+          const SizedBox(height: 10),
+          // Mini Dual-Island Split Floating Dock preview
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(
+                      m3.shapeStyle == M3ShapeStyle.crisp ? 14 : 999,
+                    ),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      for (final (i, icon, label) in const [
+                        (0, Icons.home_rounded, 'Home'),
+                        (1, Icons.download_rounded, 'Queue'),
+                        (2, Icons.video_library_rounded, 'Files'),
+                      ])
+                        Expanded(
+                          flex: _dockTab == i ? 2 : 1,
+                          child: GestureDetector(
+                            onTap: () {
+                              Haptics.selection();
+                              setState(() => _dockTab = i);
+                            },
+                            child: AnimatedContainer(
+                              duration: m3.motion.resolve(
+                                context,
+                                m3.motion.defaultSpatialDuration,
+                              ),
+                              curve: m3.motion.defaultSpatialCurve,
+                              decoration: BoxDecoration(
+                                color: _dockTab == i
+                                    ? cs.primaryContainer
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(
+                                  m3.shapeStyle == M3ShapeStyle.crisp ? 10 : 999,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    icon,
+                                    size: 16,
+                                    color: _dockTab == i
+                                        ? cs.onPrimaryContainer
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                  if (_dockTab == i) ...[
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.fade,
+                                        softWrap: false,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: cs.onPrimaryContainer,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: cs.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(
+                    m3.shapeStyle == M3ShapeStyle.crisp ? 12 : 16,
+                  ),
+                  border: Border.all(
+                    color: cs.outlineVariant.withValues(alpha: 0.45),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  _playing
+                      ? Icons.graphic_eq_rounded
+                      : Icons.content_paste_go_rounded,
+                  size: 19,
+                  color: cs.onTertiaryContainer,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(

@@ -33,12 +33,7 @@ import java.util.concurrent.Executors
  */
 class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
     private val main = Handler(Looper.getMainLooper())
-    private val pool = Executors.newCachedThreadPool()
     private var sink: EventChannel.EventSink? = null
-    @Volatile private var ready = false
-
-    /** Active jobs: id -> (title, progress). Drives the foreground notification. */
-    private val active = ConcurrentHashMap<String, Pair<String, Float>>()
 
     init {
         MethodChannel(messenger, "grab/engine").setMethodCallHandler { call, result -> handle(call, result) }
@@ -51,12 +46,12 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
     private fun handle(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "init" -> background(result) {
-                ensureReady()
+                ensureReady(context)
                 YoutubeDL.getInstance().versionName(context)
                     ?: YoutubeDL.getInstance().execute(YoutubeDLRequest(emptyList()).apply { addOption("--version") }).out.trim()
             }
             "update" -> background(result) {
-                ensureReady()
+                ensureReady(context)
                 when (YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)) {
                     YoutubeDL.UpdateStatus.DONE -> "updated"
                     YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "already_up_to_date"
@@ -66,7 +61,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             "fetch" -> {
                 val url = call.argument<String>("url")!!
                 background(result) {
-                    ensureReady()
+                    ensureReady(context)
                     val req = YoutubeDLRequest(url)
                     // Keep the cookies the site hands out, so the preview player
                     // can open the video the way yt-dlp did (TikTok needs them).
@@ -88,7 +83,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             "previewFile" -> {
                 val url = call.argument<String>("url")!!
                 background(result) {
-                    ensureReady()
+                    ensureReady(context)
                     val dir = File(context.cacheDir, "preview").apply {
                         deleteRecursively()
                         mkdirs()
@@ -115,9 +110,12 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
                     template = call.argument<String>("template").orEmpty(),
                     title = call.argument<String>("title") ?: "Download",
                 )
-                pool.execute { runDownload(job) }
+                if (active.putIfAbsent(job.id, job.title to 0f) == null) {
+                    pool.execute { runDownload(job) }
+                }
                 result.success(null)
             }
+            "activeIds" -> result.success(active.keys.toList())
             "extractAudio" -> {
                 val id = call.argument<String>("id")!!
                 val input = call.argument<String>("input")!!
@@ -159,14 +157,6 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         val template: String = "",
     )
 
-    @Synchronized
-    private fun ensureReady() {
-        if (ready) return
-        YoutubeDL.getInstance().init(context)
-        FFmpeg.getInstance().init(context)
-        ready = true
-    }
-
     private val prefs by lazy { context.getSharedPreferences("grab_engine", Context.MODE_PRIVATE) }
 
     /** Where files go: a public folder (Download, Movies or Music) plus a folder name. */
@@ -192,7 +182,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         refreshService()
         val startedAt = System.currentTimeMillis() - 2_000
         try {
-            ensureReady()
+            ensureReady(context)
             val dir = outputDir()
             val req = YoutubeDLRequest(job.url)
             val name = job.template.ifBlank { "%(title).80B [%(id)s]" }
@@ -245,9 +235,6 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         RegexOption.IGNORE_CASE,
     )
 
-    /** FFmpeg processes started by [runExtract], so they can be canceled. */
-    private val processes = ConcurrentHashMap<String, Process>()
-
     /**
      * Extracts the audio of a file already on the phone with the bundled FFmpeg,
      * so nothing has to be fetched again. Reports progress like a download.
@@ -257,7 +244,7 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
         active[id] = title to 0f
         refreshService()
         try {
-            ensureReady()
+            ensureReady(context)
             if (!input.exists()) throw IllegalStateException("The file is no longer on the phone")
             val output = uniqueFile(input.parentFile!!, input.nameWithoutExtension, format)
             val codec = when (format) {
@@ -365,6 +352,26 @@ class EnginePlugin(private val context: Context, messenger: BinaryMessenger) {
             } catch (e: Throwable) {
                 main.post { result.error("engine", e.message ?: e.toString(), null) }
             }
+        }
+    }
+
+    companion object {
+        private val pool = Executors.newCachedThreadPool()
+        @Volatile private var ready = false
+
+        /** Active jobs across all engines in this process: id -> (title, progress). */
+        private val active = ConcurrentHashMap<String, Pair<String, Float>>()
+
+        /** FFmpeg processes started by [runExtract], so they can be canceled. */
+        private val processes = ConcurrentHashMap<String, Process>()
+
+        @Synchronized
+        private fun ensureReady(context: Context) {
+            if (ready) return
+            val app = context.applicationContext
+            YoutubeDL.getInstance().init(app)
+            FFmpeg.getInstance().init(app)
+            ready = true
         }
     }
 }

@@ -10,6 +10,7 @@ import '../../core/audio/audio_playback.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
 import '../../core/widgets/dock_inset.dart';
+import '../../core/widgets/expressive_app_bar.dart';
 import '../../core/widgets/expressive_shapes.dart';
 import '../../core/widgets/morph.dart';
 import '../../core/widgets/pop_widgets.dart';
@@ -32,6 +33,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  final _search = TextEditingController();
   LibraryKind? _kind;
   var _query = '';
   late var _sort =
@@ -45,6 +47,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   /// Paths picked in selection mode; empty = not selecting.
   final _picked = <String>{};
   bool get _selecting => _picked.isNotEmpty;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   void _setSort(LibrarySort s) {
     Haptics.selection();
@@ -192,45 +200,52 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         if (!didPop) setState(_picked.clear);
       },
       child: Scaffold(
-        body: SafeArea(
-          bottom: false,
+        body: RefreshIndicator(
+          onRefresh: () async => ref.invalidate(libraryProvider),
           child: CustomScrollView(
             slivers: [
+              if (_selecting)
+                SliverAppBar(
+                  pinned: true,
+                  automaticallyImplyLeading: false,
+                  backgroundColor: context.cs.surfaceContainer,
+                  surfaceTintColor: Colors.transparent,
+                  toolbarHeight: 64,
+                  titleSpacing: 16,
+                  title: _SelectionBar(
+                    key: const ValueKey('select'),
+                    count: _picked.length,
+                    onClose: () => setState(_picked.clear),
+                    onAll: () => setState(
+                      () => _picked.addAll(items.map((i) => i.path)),
+                    ),
+                    onShare: () => _shareSelected(all),
+                    onDelete: _deleteSelected,
+                  ),
+                )
+              else
+                ExpressiveSliverHeader(
+                  title: 'Library',
+                  actions: [
+                    if (items.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: TextButton(
+                          onPressed: () => _toggle(items.first),
+                          child: const Text(
+                            'Select',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+                padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
                 sliver: SliverList.list(
                   children: [
-                    AnimatedSwitcher(
-                      duration: Pop.medium,
-                      child: _selecting
-                          ? _SelectionBar(
-                              key: const ValueKey('select'),
-                              count: _picked.length,
-                              onClose: () => setState(_picked.clear),
-                              onAll: () => setState(
-                                () => _picked.addAll(items.map((i) => i.path)),
-                              ),
-                              onShare: () => _shareSelected(all),
-                              onDelete: _deleteSelected,
-                            )
-                          : const SizedBox(
-                              key: ValueKey('title'),
-                              height: 48,
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Library',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.8,
-                                  ),
-                                ),
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
                     TextField(
+                      controller: _search,
                       onChanged: (v) => setState(() => _query = v),
                       textInputAction: TextInputAction.search,
                       decoration: const InputDecoration(
@@ -284,15 +299,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           selected: _group,
                           onSelected: _setGroup,
                         ),
-                        const Spacer(),
-                        if (!_selecting && items.isNotEmpty)
-                          TextButton(
-                            onPressed: () => _toggle(items.first),
-                            child: const Text(
-                              'Select',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -305,35 +311,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       24,
-                      24,
+                      12,
                       24,
                       DockInset.listBottom(context),
                     ),
-                    child: Column(
-                      children: [
-                        ExpressiveShapeContainer(
-                          polygon: ExpressivePolygon.clover4,
-                          size: 72,
-                          color: context.cs.secondaryContainer,
-                          child: Icon(
-                            all.isEmpty
-                                ? Icons.video_library_rounded
-                                : Icons.search_off_rounded,
-                            size: 34,
-                            color: context.cs.onSecondaryContainer,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          all.isEmpty
-                              ? 'Your downloads show up here'
-                              : 'Nothing matches',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ExpressiveEmptyState(
+                        icon: all.isEmpty
+                            ? Icons.video_library_rounded
+                            : Icons.search_off_rounded,
+                        polygon: all.isEmpty
+                            ? ExpressivePolygon.cookie12
+                            : ExpressivePolygon.clover4,
+                        containerColor: context.cs.secondaryContainer,
+                        iconColor: context.cs.onSecondaryContainer,
+                        title: all.isEmpty
+                            ? 'Your downloads show up here'
+                            : 'Nothing matches',
+                        subtitle: all.isEmpty
+                            ? 'Saved videos, audio, and subtitles will appear neatly here.'
+                            : 'Try clearing your search or switching filters.',
+                        actionLabel: all.isEmpty ? null : 'Clear filters',
+                        actionIcon: all.isEmpty ? null : Icons.clear_all_rounded,
+                        onAction: all.isEmpty
+                            ? null
+                            : () => setState(() {
+                                _search.clear();
+                                _query = '';
+                                _kind = null;
+                              }),
+                      ),
                     ),
                   ),
                 )

@@ -32,10 +32,21 @@ class MainActivity : AudioServiceActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         val action = actionOf(intent) ?: return
         launch?.invokeMethod("action", action)
     }
 
-    private fun actionOf(intent: Intent?): String? =
-        if (intent?.action == GrabTileService.ACTION_GRAB_CLIPBOARD) "grabClipboard" else null
+    private fun actionOf(intent: Intent?): String? {
+        val tab = intent?.getStringExtra(EXTRA_OPEN_TAB)
+        if (tab == "downloads") return "openDownloads"
+        val url = intent?.getStringExtra(EXTRA_OPEN_URL)?.trim()
+        if (!url.isNullOrEmpty()) return "fetch:$url"
+        return if (intent?.action == GrabTileService.ACTION_GRAB_CLIPBOARD) "grabClipboard" else null
+    }
+
+    companion object {
+        const val EXTRA_OPEN_TAB = "grab_open_tab"
+        const val EXTRA_OPEN_URL = "grab_open_url"
+    }
 }

@@ -41,13 +41,15 @@ final settingsProvider = NotifierProvider<SettingsController, AppSettings>(
 );
 
 final downloadRepositoryProvider = Provider<DownloadRepository>((ref) {
+  final engine = ref.watch(engineProvider);
   final repo = DownloadRepository(
     ref.watch(databaseProvider),
-    ref.watch(engineProvider),
+    engine,
     maxParallel: ref.read(settingsProvider).maxParallel,
     online: Connectivity().onConnectivityChanged.map(
       (r) => r.any((c) => c != ConnectivityResult.none),
     ),
+    activeIds: () async => (await engine.activeIds()).toSet(),
   );
   ref.listen(settingsProvider.select((s) => s.maxParallel), (_, n) {
     repo.maxParallel = n;

@@ -118,6 +118,8 @@ class AppSettings {
     this.fontScale = 1.0,
     this.hapticsEnabled = true,
     this.confettiEnabled = true,
+    this.artworkTinting = true,
+    this.shareKeepOpen = false,
   });
 
   final ThemeMode themeMode;
@@ -152,6 +154,8 @@ class AppSettings {
   final double fontScale;
   final bool hapticsEnabled;
   final bool confettiEnabled;
+  final bool artworkTinting;
+  final bool shareKeepOpen;
 
   static const saveBases = ['download', 'movies', 'music'];
 
@@ -193,6 +197,8 @@ class AppSettings {
     double? fontScale,
     bool? hapticsEnabled,
     bool? confettiEnabled,
+    bool? artworkTinting,
+    bool? shareKeepOpen,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
     defaultMode: defaultMode ?? this.defaultMode,
@@ -216,6 +222,8 @@ class AppSettings {
     fontScale: fontScale ?? this.fontScale,
     hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
     confettiEnabled: confettiEnabled ?? this.confettiEnabled,
+    artworkTinting: artworkTinting ?? this.artworkTinting,
+    shareKeepOpen: shareKeepOpen ?? this.shareKeepOpen,
   );
 
   /// Resets only appearance & studio preferences while preserving download settings.
@@ -234,6 +242,7 @@ class AppSettings {
     fontScale: 1.0,
     hapticsEnabled: true,
     confettiEnabled: true,
+    artworkTinting: true,
   );
 
   static AppSettings load(SharedPreferences p) {
@@ -318,6 +327,8 @@ class AppSettings {
       fontScale: fontScale,
       hapticsEnabled: p.getBool('hapticsEnabled') ?? true,
       confettiEnabled: p.getBool('confettiEnabled') ?? true,
+      artworkTinting: p.getBool('artworkTinting') ?? true,
+      shareKeepOpen: p.getBool('shareKeepOpen') ?? false,
     );
   }
 
@@ -348,6 +359,8 @@ class AppSettings {
     await p.setDouble('fontScale', fontScale);
     await p.setBool('hapticsEnabled', hapticsEnabled);
     await p.setBool('confettiEnabled', confettiEnabled);
+    await p.setBool('artworkTinting', artworkTinting);
+    await p.setBool('shareKeepOpen', shareKeepOpen);
   }
 
   /// Index of the quality option closest to [maxHeight] without going over.

@@ -997,35 +997,34 @@ class _ExpressiveTabStackState extends State<ExpressiveTabStack>
     final isOutgoing = animating && i == _previous;
     final visible = isIncoming || isOutgoing;
 
-    Widget content = TickerMode(
-      enabled: isIncoming,
-      child: Offstage(
-        offstage: !visible,
-        child: IgnorePointer(
-          ignoring: !isIncoming,
-          child: child,
+    final double opacity;
+    final Offset translation;
+    if (animating && isIncoming) {
+      opacity = fadeT.clamp(0.0, 1.0);
+      translation = Offset(_direction * 0.05 * (1.0 - spatialT), 0.0);
+    } else if (animating && isOutgoing) {
+      opacity = (1.0 - fadeT).clamp(0.0, 1.0);
+      translation = Offset(-_direction * 0.05 * fadeT, 0.0);
+    } else {
+      opacity = 1.0;
+      translation = Offset.zero;
+    }
+
+    return Opacity(
+      opacity: opacity,
+      child: FractionalTranslation(
+        translation: translation,
+        child: TickerMode(
+          enabled: isIncoming,
+          child: Offstage(
+            offstage: !visible,
+            child: IgnorePointer(
+              ignoring: !isIncoming,
+              child: child,
+            ),
+          ),
         ),
       ),
     );
-
-    if (animating && isIncoming) {
-      content = Opacity(
-        opacity: fadeT.clamp(0.0, 1.0),
-        child: FractionalTranslation(
-          translation: Offset(_direction * 0.05 * (1.0 - spatialT), 0.0),
-          child: content,
-        ),
-      );
-    } else if (animating && isOutgoing) {
-      content = Opacity(
-        opacity: (1.0 - fadeT).clamp(0.0, 1.0),
-        child: FractionalTranslation(
-          translation: Offset(-_direction * 0.05 * fadeT, 0.0),
-          child: content,
-        ),
-      );
-    }
-
-    return content;
   }
 }

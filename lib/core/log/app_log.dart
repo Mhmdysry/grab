@@ -31,11 +31,11 @@ abstract final class AppLog {
       // In widget tests path_provider may not be mocked; fall back to memory buffer.
     }
 
-    info('AppLog initialized', tag: entrypoint);
+    info(entrypoint, 'AppLog initialized');
 
     final prevFlutterHandler = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
-      error(
+      recordError(
         'FlutterError: ${details.exceptionAsString()}',
         tag: '$entrypoint/flutter',
         stack: details.stack,
@@ -48,7 +48,7 @@ abstract final class AppLog {
     };
 
     PlatformDispatcher.instance.onError = (Object err, StackTrace stack) {
-      error(
+      recordError(
         'Uncaught async error: $err',
         tag: '$entrypoint/async',
         stack: stack,
@@ -57,17 +57,46 @@ abstract final class AppLog {
     };
   }
 
-  static void info(String message, {String tag = 'app'}) =>
-      _write('INFO', tag, message);
+  static String? get logFilePath => _file?.path;
 
-  static void warn(String message, {String tag = 'app', Object? error}) =>
+  static void info(
+    String messageOrTag, [
+    String? message,
+  ]) =>
       _write(
-        'WARN',
-        tag,
-        error == null ? message : '$message | $error',
+        'INFO',
+        message != null ? messageOrTag : 'app',
+        message ?? messageOrTag,
       );
 
+  static void warn(
+    String messageOrTag, [
+    String? message,
+    Object? error,
+  ]) {
+    final tag = message != null ? messageOrTag : 'app';
+    final msg = message ?? messageOrTag;
+    _write(
+      'WARN',
+      tag,
+      error == null ? msg : '$msg | $error',
+    );
+  }
+
   static void error(
+    String tag,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) =>
+      recordError(
+        message,
+        tag: tag,
+        error: error,
+        stack: stackTrace,
+      );
+
+  static void recordError(
     String message, {
     String tag = 'app',
     Object? error,

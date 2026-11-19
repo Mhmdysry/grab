@@ -15,7 +15,7 @@ Future<void> main() async {
   try {
     await AudioPlayback.init();
   } catch (e, st) {
-    AppLog.error('AudioPlayback.init failed', tag: 'audio', error: e, stack: st);
+    AppLog.error('audio', 'AudioPlayback.init failed', error: e, stackTrace: st);
   }
   final prefs = await SharedPreferences.getInstance();
   AudioArt.instance = AudioArt(prefs);

@@ -97,13 +97,6 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  Future<void> _paste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final link = extractLink(data?.text) ?? data?.text?.trim();
-    if (link == null || link.isEmpty) return;
-    fetchLink(link);
-  }
-
   /// Format sheet for one item; the picker for a playlist or profile.
   Future<void> _choose(MediaInfo info) async {
     final queued = info.isPlaylist && info.entries.isNotEmpty
@@ -374,16 +367,6 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
               ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: PopIconButton(
-                    icon: Icons.content_paste_rounded,
-                    tooltip: 'Paste link and fetch',
-                    onPressed: _paste,
-                  ),
-                ),
-              ],
             ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(

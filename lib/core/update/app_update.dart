@@ -1,14 +1,82 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../log/app_log.dart';
+
 /// Where releases are published.
 const repoUrl = 'https://github.com/Mhmdysry/grab';
 const _latestApi = 'https://api.github.com/repos/Mhmdysry/grab/releases/latest';
 
 const _channel = MethodChannel('grab/app');
+
+/// Result of launching or committing an APK update install.
+class InstallAttemptResult {
+  const InstallAttemptResult({
+    required this.status,
+    this.message,
+  });
+
+  /// `'started'`, `'needsPermission'`, `'invalidApk'`, `'conflict'`, `'incompatible'`, or `'error'`.
+  final String status;
+  final String? message;
+
+  bool get started => status == 'started' || status == 'prompted' || status == 'success';
+  bool get needsPermission => status == 'needsPermission';
+}
+
+final StreamController<InstallAttemptResult> _installStatusController =
+    StreamController<InstallAttemptResult>.broadcast();
+bool _listenerRegistered = false;
+
+/// Stream of native Android [PackageInstaller] session commit results.
+Stream<InstallAttemptResult> get installStatusStream {
+  if (!_listenerRegistered) {
+    _listenerRegistered = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'installStatus' && call.arguments is Map) {
+        final map = call.arguments as Map;
+        final status = '${map['status'] ?? 'failure'}';
+        final code = map['code'];
+        final rawMsg = '${map['message'] ?? ''}'.trim();
+        AppLog.info(
+          'AppUpdate',
+          'PackageInstaller status=$status (code=$code) message="$rawMsg"',
+        );
+        _installStatusController.add(
+          InstallAttemptResult(
+            status: status,
+            message: _friendlyInstallError(status, rawMsg),
+          ),
+        );
+      }
+    });
+  }
+  return _installStatusController.stream;
+}
+
+String _friendlyInstallError(String status, String raw) {
+  switch (status) {
+    case 'conflict':
+      return 'Signature mismatch with the currently installed build. '
+          'If you installed a build older than v1.0.14, uninstall Grab once and install the new APK (all future updates from v1.0.14+ will update in place).';
+    case 'incompatible':
+      return 'This APK is not compatible with your phone CPU architecture ($raw).';
+    case 'invalid':
+      return 'The downloaded APK file appears corrupted or incomplete ($raw). Tap Try again.';
+    case 'storage':
+      return 'Not enough free storage space to install the update.';
+    case 'blocked':
+      return 'Installation was blocked by device policy or Play Protect ($raw).';
+    case 'aborted':
+      return 'Installation was canceled.';
+    default:
+      return raw.isEmpty ? 'Installation failed ($status).' : raw;
+  }
+}
 
 /// One downloadable file of a release.
 class ReleaseAsset {
@@ -135,7 +203,11 @@ Future<File> downloadUpdate(
   if (dir.existsSync()) dir.deleteSync(recursive: true);
   dir.createSync(recursive: true);
   final file = File('${dir.path}/${asset.name}');
-  final client = HttpClient();
+  AppLog.info(
+    'AppUpdate',
+    'Downloading update asset "${asset.name}" (${asset.size} bytes) from ${asset.url}',
+  );
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   try {
     final req = await client.getUrl(Uri.parse(asset.url));
     req.headers.set(HttpHeaders.userAgentHeader, 'Grab-Android');
@@ -146,13 +218,38 @@ Future<File> downloadUpdate(
     final total = res.contentLength > 0 ? res.contentLength : asset.size;
     final sink = file.openWrite();
     var got = 0;
-    await for (final chunk in res) {
-      sink.add(chunk);
-      got += chunk.length;
-      if (total > 0) onProgress((got / total).clamp(0, 1));
+    try {
+      await for (final chunk in res) {
+        sink.add(chunk);
+        got += chunk.length;
+        if (total > 0) onProgress((got / total).clamp(0, 1));
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
     }
-    await sink.close();
+    final actualSize = file.existsSync() ? file.lengthSync() : 0;
+    AppLog.info(
+      'AppUpdate',
+      'Downloaded "${asset.name}": received $actualSize bytes (expected $total)',
+    );
+    if (actualSize <= 0 || (total > 0 && actualSize != total)) {
+      try {
+        file.deleteSync();
+      } catch (_) {}
+      throw HttpException(
+        'Incomplete APK download ($actualSize of $total bytes)',
+      );
+    }
     return file;
+  } catch (e, st) {
+    AppLog.error(
+      'AppUpdate',
+      'downloadUpdate failed for ${asset.name}',
+      error: e,
+      stackTrace: st,
+    );
+    rethrow;
   } finally {
     client.close();
   }
@@ -160,21 +257,46 @@ Future<File> downloadUpdate(
 
 /// Hands the APK to Android's installer, which updates Grab in place
 /// (same app, newer version: downloads, settings and history are kept).
-/// Returns false when the user first has to allow Grab to install apps.
-Future<bool> installUpdate(File file) async {
+Future<InstallAttemptResult> installUpdateWithDetails(
+  File file, {
+  bool directViewFallback = false,
+}) async {
   if (Platform.isMacOS) {
-    // Opens the disk image; drag Grab to Applications to replace the old one.
     await Process.run('open', [file.path]);
-    return true;
+    return const InstallAttemptResult(status: 'started');
   }
   if (Platform.isWindows) {
     await Process.run('explorer', [file.path]);
-    return true;
+    return const InstallAttemptResult(status: 'started');
   }
-  return await _channel.invokeMethod<String>('installApk', {
-        'path': file.path,
-      }) ==
-      'started';
+  final method = directViewFallback ? 'installApkDirect' : 'installApk';
+  AppLog.info('AppUpdate', 'Invoking $method for ${file.path}');
+  final raw = await _channel.invokeMethod<String>(method, {
+    'path': file.path,
+  }) ?? 'error:Unknown installer response';
+  AppLog.info('AppUpdate', '$method returned: $raw');
+  if (raw == 'started' || raw == 'needsPermission') {
+    return InstallAttemptResult(status: raw);
+  }
+  if (raw.startsWith('invalidApk:')) {
+    return InstallAttemptResult(
+      status: 'invalidApk',
+      message: raw.substring('invalidApk:'.length),
+    );
+  }
+  if (raw.startsWith('error:')) {
+    return InstallAttemptResult(
+      status: 'error',
+      message: raw.substring('error:'.length),
+    );
+  }
+  return InstallAttemptResult(status: 'error', message: raw);
+}
+
+/// Backwards-compatible bool wrapper around [installUpdateWithDetails].
+Future<bool> installUpdate(File file) async {
+  final res = await installUpdateWithDetails(file);
+  return res.started;
 }
 
 Future<void> openUrl(String url) async {

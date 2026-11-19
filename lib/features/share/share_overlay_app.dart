@@ -61,19 +61,11 @@ class ShareOverlayApp extends ConsumerWidget {
             builder: (context, child) {
               final theme = Theme.of(context);
               syncToastScheme(theme.colorScheme);
-              final isDark = theme.brightness == Brightness.dark;
-              return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: isDark
-                    ? SystemUiOverlayStyle.light.copyWith(
-                        statusBarColor: Colors.transparent,
-                        systemNavigationBarColor: Colors.transparent,
-                      )
-                    : SystemUiOverlayStyle.dark.copyWith(
-                        statusBarColor: Colors.transparent,
-                        systemNavigationBarColor: Colors.transparent,
-                      ),
-                child: child!,
-              );
+              // Do NOT wrap in AnnotatedRegion<SystemUiOverlayStyle> here:
+              // invoking PlatformPlugin.setSystemChromeSystemUIOverlayStyle on Android 14-16 / One UI
+              // triggers DecorView.updateColorViews -> setWindowBackground(color=0xFF010102),
+              // which replaces the translucent window background with an opaque near-black background.
+              return child!;
             },
             home: const _ShareOverlayHost(),
           ),
@@ -102,6 +94,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   ShareCardPhase _phase = ShareCardPhase.loading;
   String? _sharedUrl;
   String? _customError;
+  var _silentInstant = false;
   var _expanded = false;
   var _busyEnqueue = false;
   String? _queuedJobId;
@@ -115,12 +108,24 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     super.initState();
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText') {
-        await _handleIncoming(call.arguments as String?);
+        await _handleIncoming(call.arguments as String?, silent: false);
+      } else if (call.method == 'instantShareText') {
+        await _handleIncoming(call.arguments as String?, silent: true);
       }
     });
-    _channel
-        .invokeMethod<String>('takeSharedText')
-        .then(_handleIncoming, onError: (_) {});
+    _channel.invokeMethod<dynamic>('takeSharedPayload').then((payload) {
+      if (payload is Map) {
+        final text = payload['text'] as String?;
+        final silent = payload['silent'] == true;
+        _handleIncoming(text, silent: silent);
+      }
+    }, onError: (_) {});
+  }
+
+  Future<void> _showNativeToast(String message) async {
+    try {
+      await _channel.invokeMethod<void>('showToast', {'message': message});
+    } catch (_) {}
   }
 
   @override
@@ -130,15 +135,17 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     super.dispose();
   }
 
-  Future<void> _handleIncoming(String? raw) async {
-    AppLog.info('ShareOverlay', 'Incoming shared text: "$raw"');
+  Future<void> _handleIncoming(String? raw, {bool silent = false}) async {
+    AppLog.info('ShareOverlay', 'Incoming shared text (silent=$silent): "$raw"');
     _autoCloseTimer?.cancel();
     await ref.read(sharedPrefsProvider).reload();
     ref.invalidate(settingsProvider);
     if (!mounted) return;
 
     final link = extractLink(raw) ?? raw?.trim();
+    final useSilent = silent || ref.read(settingsProvider).instantGrab;
     setState(() {
+      _silentInstant = useSilent;
       _dragOffset = 0;
       _expanded = false;
       _busyEnqueue = false;
@@ -155,11 +162,23 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
       }
     });
 
-    final reduced = Pop.reduceMotion(context);
-    if (reduced) {
-      _entrance.value = 1.0;
+    if (useSilent) {
+      if (link == null || link.isEmpty) {
+        await _showNativeToast('Grab: No link found in shared text.');
+        await _dismiss();
+        return;
+      }
+      // Make sure the overlay window is closed immediately if not already closed natively.
+      try {
+        await _channel.invokeMethod('closeOverlay');
+      } catch (_) {}
     } else {
-      _entrance.forward(from: 0.0);
+      final reduced = Pop.reduceMotion(context);
+      if (reduced) {
+        _entrance.value = 1.0;
+      } else {
+        _entrance.forward(from: 0.0);
+      }
     }
 
     if (link != null && link.isNotEmpty) {
@@ -255,7 +274,21 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
 
     if (!mounted) return;
     setState(() => _busyEnqueue = false);
-    if (jobId == null) return;
+    if (jobId == null) {
+      if (_silentInstant) {
+        await _showNativeToast('Grab: Failed to start download.');
+      }
+      return;
+    }
+
+    if (_silentInstant) {
+      final label = count > 1 ? '$count items' : info.title;
+      await _showNativeToast('Grab: Downloading $label');
+      try {
+        await _channel.invokeMethod('closeOverlay');
+      } catch (_) {}
+      return;
+    }
 
     Haptics.success();
     final keepOpen = ref.read(settingsProvider).shareKeepOpen;
@@ -285,7 +318,6 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     ref.listen(fetchControllerProvider.select((s) => s.info), (prev, next) {
       if (!mounted) return;
       if (next is AsyncData && next.value != null) {
-        Haptics.light();
         final info = next.value!;
         setState(() {
           _phase = ShareCardPhase.ready;
@@ -293,18 +325,26 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
             ..clear()
             ..addAll([for (var i = 0; i < info.entries.length; i++) i]);
         });
-        final isPlaylist = info.isPlaylist && info.entries.isNotEmpty;
-        if (ref.read(settingsProvider).instantGrab && !isPlaylist) {
+        if (_silentInstant || ref.read(settingsProvider).instantGrab) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _phase == ShareCardPhase.ready) _download();
           });
+        } else {
+          Haptics.light();
         }
       } else if (next is AsyncError) {
         setState(() => _phase = ShareCardPhase.error);
+        if (_silentInstant) {
+          _showNativeToast("Grab: Couldn't fetch link (${next.error})");
+        }
       } else if (next is AsyncLoading && _phase != ShareCardPhase.queued) {
         setState(() => _phase = ShareCardPhase.loading);
       }
     });
+
+    if (_silentInstant) {
+      return const SizedBox.shrink();
+    }
 
     final fetchState = ref.watch(fetchControllerProvider);
     final fetchCtrl = ref.read(fetchControllerProvider.notifier);

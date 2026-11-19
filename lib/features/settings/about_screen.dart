@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -30,15 +31,32 @@ class _AboutScreenState extends State<AboutScreen> {
   double _progress = 0;
   File? _apk;
   String? _error;
+  StreamSubscription<InstallAttemptResult>? _installSub;
 
   @override
   void initState() {
     super.initState();
+    _installSub = installStatusStream.listen((res) {
+      if (!mounted) return;
+      if (!res.started && res.status != 'aborted') {
+        Haptics.error();
+        setState(() {
+          _stage = _Stage.error;
+          _error = res.message ?? 'Installation failed (${res.status}).';
+        });
+      }
+    });
     PackageInfo.fromPlatform().then((i) {
       if (!mounted) return;
       setState(() => _app = i);
       _check(quiet: true);
     });
+  }
+
+  @override
+  void dispose() {
+    _installSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _check({bool quiet = false}) async {
@@ -77,6 +95,7 @@ class _AboutScreenState extends State<AboutScreen> {
     setState(() {
       _stage = _Stage.downloading;
       _progress = 0;
+      _error = null;
     });
     try {
       final apk = await downloadUpdate(
@@ -94,21 +113,33 @@ class _AboutScreenState extends State<AboutScreen> {
       Haptics.error();
       setState(() {
         _stage = _Stage.error;
-        _error = 'The download stopped. Try again.';
+        _error = 'The download stopped ($e). Try again.';
       });
     }
   }
 
-  Future<void> _install() async {
+  Future<void> _install({bool directFallback = false}) async {
     Haptics.light();
-    final started = await installUpdate(_apk!);
-    if (!started) {
+    final res = await installUpdateWithDetails(
+      _apk!,
+      directViewFallback: directFallback,
+    );
+    if (!mounted) return;
+    if (res.needsPermission) {
       popToast(
         'Allow Grab to install updates',
         icon: Icons.security_update_good_rounded,
         detail:
             'Turn on "Allow from this source", come back, then tap Install.',
       );
+      return;
+    }
+    if (!res.started) {
+      Haptics.error();
+      setState(() {
+        _stage = _Stage.error;
+        _error = res.message ?? 'Could not launch Android package installer.';
+      });
     }
   }
 
@@ -454,18 +485,54 @@ class _AboutScreenState extends State<AboutScreen> {
               icon: Icons.download_rounded,
               onPressed: _download,
             ),
-            _Stage.ready => PopButton(
-              label: 'Install',
-              icon: Icons.install_mobile_rounded,
-              onPressed: _install,
+            _Stage.ready => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PopButton(
+                  label: 'Install',
+                  icon: Icons.install_mobile_rounded,
+                  onPressed: () => _install(),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => _install(directFallback: true),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: const Text('Open with system package installer'),
+                ),
+              ],
             ),
             _Stage.downloading => const SizedBox.shrink(),
-            _ => PopButton(
-              label: _stage == _Stage.error ? 'Try again' : 'Check now',
-              icon: Icons.refresh_rounded,
-              busy: _stage == _Stage.checking,
-              height: 48,
-              onPressed: _stage == _Stage.checking ? null : _check,
+            _ => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PopButton(
+                  label: _stage == _Stage.error ? 'Try again' : 'Check now',
+                  icon: Icons.refresh_rounded,
+                  busy: _stage == _Stage.checking,
+                  height: 48,
+                  onPressed: _stage == _Stage.checking
+                      ? null
+                      : (_stage == _Stage.error && _asset != null
+                            ? _download
+                            : _check),
+                ),
+                if (_stage == _Stage.error && _apk != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => _install(directFallback: true),
+                    icon: const Icon(Icons.install_mobile_rounded, size: 18),
+                    label: const Text('Try system package installer'),
+                  ),
+                ],
+                if (_stage == _Stage.error && _release != null) ...[
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    onPressed: () => openUrl(_asset?.url ?? _release!.pageUrl),
+                    icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                    label: const Text('Download APK in browser'),
+                  ),
+                ],
+              ],
             ),
           },
         ],

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grab/core/log/app_log.dart';
 import 'package:grab/data/db/app_database.dart';
 import 'package:grab/features/library/library_items.dart';
 
@@ -70,4 +73,56 @@ void main() {
       );
     },
   );
+
+  test(
+    'mergeDiskFiles recovers saved media files on disk after history is cleared without duplicating DB items',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('grab_lib_test_');
+      try {
+        final trackedVideo = File('${dir.path}/Tracked Clip - YouTube.mp4')
+          ..writeAsStringSync('video');
+        final orphanedAudio = File('${dir.path}/Cleared Song - SoundCloud.mp3')
+          ..writeAsStringSync('audio');
+        final tempPart = File('${dir.path}/Incomplete.mp4.part')
+          ..writeAsStringSync('part');
+        expect(tempPart.existsSync(), isTrue);
+
+        final dbItems = buildLibrary([
+          job('job1', trackedVideo.path, title: 'Tracked Clip', minute: 10),
+        ], exists: (p) => File(p).existsSync());
+
+        final merged = mergeDiskFiles(dbItems, dir.path);
+        expect(merged.length, 2);
+        expect(
+          merged.map((i) => i.path).toSet(),
+          {trackedVideo.path, orphanedAudio.path},
+        );
+
+        final recovered = merged.firstWhere((i) => i.path == orphanedAudio.path);
+        expect(recovered.jobId, 'disk:${orphanedAudio.path}');
+        expect(recovered.title, 'Cleared Song');
+        expect(recovered.site, 'soundcloud');
+        expect(recovered.kind, LibraryKind.audio);
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
+  test('AppLog captures info, warn, and error entries in memory buffer', () async {
+    await AppLog.clear();
+    AppLog.info('TestTag', 'Info message');
+    AppLog.warn('TestTag', 'Warning message');
+    AppLog.error(
+      'TestTag',
+      'Crash occurred',
+      error: StateError('bad state'),
+    );
+    final text = await AppLog.readAppLogs();
+    expect(text, contains('[INFO] [TestTag] Info message'));
+    expect(text, contains('[WARN] [TestTag] Warning message'));
+    expect(text, contains('[ERROR] [TestTag] Crash occurred'));
+    expect(text, contains('Bad state: bad state'));
+  });
 }
+

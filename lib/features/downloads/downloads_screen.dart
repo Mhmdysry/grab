@@ -330,7 +330,13 @@ class DownloadJobCard extends ConsumerWidget {
                   ),
                 if (!active)
                   GestureDetector(
-                    onTap: () => repo.remove(job.id),
+                    onTap: () {
+                      if (job.status == JobStatus.done) {
+                        ref.read(homeClearedJobIdsProvider.notifier).hide(job.id);
+                      } else {
+                        repo.remove(job.id);
+                      }
+                    },
                     child: Text(
                       'Remove',
                       style: TextStyle(
@@ -425,10 +431,15 @@ class DownloadJobCard extends ConsumerWidget {
           if (active) {
             repo.cancel(job.id);
           } else {
-            repo.remove(job.id);
+            if (job.status == JobStatus.done) {
+              ref.read(homeClearedJobIdsProvider.notifier).hide(job.id);
+            } else {
+              repo.remove(job.id);
+            }
             popToast(
               'Removed from history',
               icon: Icons.delete_sweep_rounded,
+              detail: 'Saved files in Library are untouched.',
               context: context,
             );
           }

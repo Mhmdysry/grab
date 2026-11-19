@@ -30,8 +30,14 @@ class LibraryItem {
   String get ext => p.extension(path).replaceFirst('.', '').toUpperCase();
 }
 
+const _videoExt = {'.mp4', '.mkv', '.webm', '.mov', '.m4v', '.avi'};
 const _audioExt = {'.mp3', '.m4a', '.opus', '.flac', '.ogg', '.wav', '.aac'};
 const _subExt = {'.srt', '.vtt', '.ass'};
+
+bool isLibraryMediaPath(String path) {
+  final e = p.extension(path).toLowerCase();
+  return _videoExt.contains(e) || _audioExt.contains(e) || _subExt.contains(e);
+}
 
 LibraryKind kindOf(String path) {
   final e = p.extension(path).toLowerCase();
@@ -69,6 +75,67 @@ List<LibraryItem> buildLibrary(
       );
     }
   }
+  return out;
+}
+
+/// Merges [dbItems] with any media files present on disk in [dirPath] that are
+/// not already tracked in [dbItems] (for example, files whose history rows were
+/// cleared earlier). Results are returned newest first.
+List<LibraryItem> mergeDiskFiles(
+  List<LibraryItem> dbItems,
+  String? dirPath,
+) {
+  if (dirPath == null || dirPath.trim().isEmpty) return dbItems;
+  final dir = Directory(dirPath);
+  if (!dir.existsSync()) return dbItems;
+
+  final seen = <String>{for (final item in dbItems) item.path};
+  final out = <LibraryItem>[...dbItems];
+
+  try {
+    for (final entity in dir.listSync(followLinks: false)) {
+      if (entity is! File) continue;
+      final path = entity.path;
+      final name = p.basename(path);
+      if (name.startsWith('.') ||
+          name.endsWith('.part') ||
+          name.endsWith('.ytdl')) {
+        continue;
+      }
+      if (!isLibraryMediaPath(path) || !seen.add(path)) continue;
+
+      final base = p.basenameWithoutExtension(path);
+      String title = base;
+      String? site;
+      final dashIdx = base.lastIndexOf(' - ');
+      if (dashIdx > 0 && dashIdx + 3 < base.length) {
+        title = base.substring(0, dashIdx).trim();
+        site = base.substring(dashIdx + 3).trim().toLowerCase();
+      }
+      DateTime? mtime;
+      try {
+        mtime = entity.lastModifiedSync();
+      } catch (_) {}
+
+      out.add(
+        LibraryItem(
+          jobId: 'disk:$path',
+          path: path,
+          title: title,
+          kind: kindOf(path),
+          site: site,
+          finishedAt: mtime,
+        ),
+      );
+    }
+  } catch (_) {
+    return dbItems;
+  }
+
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  out.sort(
+    (a, b) => (b.finishedAt ?? epoch).compareTo(a.finishedAt ?? epoch),
+  );
   return out;
 }
 

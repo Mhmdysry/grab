@@ -140,3 +140,57 @@ final dynamicColorProvider = FutureProvider<Color?>((ref) async {
     return null;
   }
 });
+
+/// Job IDs hidden from the Home screen's finished Downloads list via
+/// "Clear finished", while keeping their database rows intact so they stay
+/// in the Library tab with full metadata and thumbnails.
+class HomeClearedJobIds extends Notifier<Set<String>> {
+  static const _prefsKey = 'homeClearedJobIds';
+
+  @override
+  Set<String> build() {
+    try {
+      final prefs = ref.watch(sharedPrefsProvider);
+      return (prefs.getStringList(_prefsKey) ?? const <String>[]).toSet();
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
+  Future<void> hide(String id) => hideAll([id]);
+
+  Future<void> hideAll(Iterable<String> ids) async {
+    final next = {...state, ...ids};
+    state = next;
+    try {
+      final prefs = ref.read(sharedPrefsProvider);
+      await prefs.setStringList(_prefsKey, next.toList());
+    } catch (_) {}
+  }
+
+  Future<void> unhide(String id) async {
+    if (!state.contains(id)) return;
+    final next = {...state}..remove(id);
+    state = next;
+    try {
+      final prefs = ref.read(sharedPrefsProvider);
+      await prefs.setStringList(_prefsKey, next.toList());
+    } catch (_) {}
+  }
+}
+
+final homeClearedJobIdsProvider =
+    NotifierProvider<HomeClearedJobIds, Set<String>>(HomeClearedJobIds.new);
+
+/// Resolves the active save directory path on disk so the Library tab can
+/// also include media files that remain in the folder even if their history
+/// row was cleared earlier.
+final outputDirProvider = FutureProvider<String?>((ref) async {
+  ref.watch(settingsProvider.select((s) => (s.saveBase, s.saveFolder)));
+  try {
+    return await ref.watch(engineProvider).outputDir();
+  } catch (_) {
+    return null;
+  }
+});
+

@@ -23,6 +23,7 @@ import '../library/library_items.dart';
 import '../library/library_screen.dart';
 import 'about_screen.dart';
 import 'appearance_screen.dart';
+import 'debug_log_screen.dart';
 
 final _outputDirProvider = FutureProvider<String?>(
   (ref) => ref.watch(engineProvider).outputDir(),
@@ -291,6 +292,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       value: app == null ? '' : 'v${app.version}',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      ),
+                    ),
+                    _Row(
+                      label: 'Debug log',
+                      value: 'View & share logs',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DebugLogScreen(),
+                        ),
                       ),
                     ),
                     _Row(

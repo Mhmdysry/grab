@@ -66,6 +66,31 @@ class AppPlugin(
                     )
                     result.success("started")
                 }
+                "getLogcat" -> {
+                    try {
+                        val pid = android.os.Process.myPid().toString()
+                        val proc = Runtime.getRuntime().exec(
+                            arrayOf("logcat", "-d", "-v", "time", "-t", "300", "--pid=$pid"),
+                        )
+                        val text = proc.inputStream.bufferedReader().readText()
+                        if (text.isNotBlank()) {
+                            result.success(text)
+                        } else {
+                            val fallback = Runtime.getRuntime().exec(
+                                arrayOf("logcat", "-d", "-v", "time", "-t", "250"),
+                            )
+                            result.success(fallback.inputStream.bufferedReader().readText())
+                        }
+                    } catch (e: Throwable) {
+                        result.success("Could not read logcat: ${e.message}")
+                    }
+                }
+                "clearLogcat" -> {
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("logcat", "-c"))
+                    } catch (_: Throwable) {}
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

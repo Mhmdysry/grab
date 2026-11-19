@@ -35,11 +35,13 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final VideoPlayerController _c = VideoPlayerController.file(
-    File(widget.item.path),
-    viewType: videoViewType,
-    videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-  );
+  late final VideoPlayerController? _c = _audio
+      ? null
+      : VideoPlayerController.file(
+          File(widget.item.path),
+          viewType: videoViewType,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
   Object? _error;
   var _controlsVisible = true;
   Timer? _hide;
@@ -49,9 +51,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _c.addListener(() => mounted ? setState(() {}) : null);
-    _c.initialize().then((_) {
-      _c.play();
+    final c = _c;
+    if (c == null) return;
+    c.addListener(() => mounted ? setState(() {}) : null);
+    c.initialize().then((_) {
+      c.play();
       _scheduleHide();
     }, onError: (Object e) => setState(() => _error = e));
   }
@@ -59,7 +63,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _hide?.cancel();
-    _c.dispose();
+    _c?.dispose();
     super.dispose();
   }
 
@@ -67,27 +71,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hide?.cancel();
     if (_audio) return;
     _hide = Timer(const Duration(seconds: 3), () {
-      if (mounted && _c.value.isPlaying) {
+      if (mounted && (_c?.value.isPlaying ?? false)) {
         setState(() => _controlsVisible = false);
       }
     });
   }
 
   void _toggle() {
+    final c = _c;
+    if (c == null) return;
     Haptics.selection();
-    _c.value.isPlaying ? _c.pause() : _c.play();
+    c.value.isPlaying ? c.pause() : c.play();
     setState(() => _controlsVisible = true);
     _scheduleHide();
   }
 
   void _seekBy(int seconds) {
-    _c.seekTo(_c.value.position + Duration(seconds: seconds));
+    final c = _c;
+    if (c == null) return;
+    c.seekTo(c.value.position + Duration(seconds: seconds));
     _scheduleHide();
   }
 
   @override
   Widget build(BuildContext context) {
-    final v = _c.value;
+    if (_audio) {
+      return AudioPlayerScreen(item: widget.item);
+    }
+    final c = _c!;
+    final v = c.value;
     final cs = context.cs;
     final m3 = context.m3;
     return Scaffold(
@@ -132,7 +144,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         )
                       : AspectRatio(
                           aspectRatio: v.aspectRatio,
-                          child: VideoPlayer(_c),
+                          child: VideoPlayer(c),
                         ),
                 ),
               ),
@@ -206,7 +218,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Slider(
               value: total == 0 ? 0 : pos / total,
               onChanged: (x) =>
-                  _c.seekTo(Duration(milliseconds: (x * total).round())),
+                  _c?.seekTo(Duration(milliseconds: (x * total).round())),
               onChangeEnd: (_) => _scheduleHide(),
               semanticFormatterCallback: (_) =>
                   '${_fmt(v.position)} of ${_fmt(v.duration)}',

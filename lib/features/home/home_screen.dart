@@ -262,8 +262,16 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _clearFinished(List<DownloadJob> historyJobs) async {
     Haptics.medium();
     final repo = ref.read(downloadRepositoryProvider);
+    final doneIds = <String>[];
     for (final j in historyJobs) {
-      await repo.remove(j.id);
+      if (j.status == JobStatus.done) {
+        doneIds.add(j.id);
+      } else {
+        await repo.remove(j.id);
+      }
+    }
+    if (doneIds.isNotEmpty) {
+      await ref.read(homeClearedJobIdsProvider.notifier).hideAll(doneIds);
     }
     if (!mounted) return;
     popToast(
@@ -298,11 +306,16 @@ class HomeScreenState extends ConsumerState<HomeScreen> {
     final settings = ref.watch(settingsProvider);
     final version = ref.watch(engineVersionProvider);
     final allJobs = ref.watch(jobsProvider).value ?? const <DownloadJob>[];
+    final clearedIds = ref.watch(homeClearedJobIdsProvider);
     final activeJobs = allJobs
         .where((j) => isActiveJobStatus(j.status))
         .toList();
     final historyJobs = allJobs
-        .where((j) => !isActiveJobStatus(j.status))
+        .where(
+          (j) =>
+              !isActiveJobStatus(j.status) &&
+              !(j.status == JobStatus.done && clearedIds.contains(j.id)),
+        )
         .toList();
     final completedJobs = historyJobs
         .where((j) => j.status == JobStatus.done)

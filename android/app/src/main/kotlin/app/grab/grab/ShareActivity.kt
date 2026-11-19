@@ -51,7 +51,6 @@ class ShareActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        intent?.putExtra("background_mode", "transparent")
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         val hadEngine = FlutterEngineCache.getInstance().get(ENGINE_ID) != null
@@ -59,7 +58,6 @@ class ShareActivity : FlutterActivity() {
         if (!hadEngine) pendingSharedText = text
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        window.decorView.setBackgroundColor(Color.TRANSPARENT)
         ensureViewsTransparent(window.decorView)
         window.decorView.post { ensureViewsTransparent(window.decorView) }
         activeActivity = WeakReference(this)
@@ -72,15 +70,25 @@ class ShareActivity : FlutterActivity() {
 
     private fun ensureViewsTransparent(view: android.view.View?) {
         if (view == null) return
-        view.setBackgroundColor(Color.TRANSPARENT)
-        if (view is android.view.TextureView) {
-            view.isOpaque = false
-        } else if (view is android.view.SurfaceView) {
-            view.setZOrderOnTop(true)
-            view.holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
-        } else if (view is android.view.ViewGroup) {
-            for (i in 0 until view.childCount) {
-                ensureViewsTransparent(view.getChildAt(i))
+        when (view) {
+            is android.view.TextureView -> {
+                // TextureView throws UnsupportedOperationException if setBackgroundDrawable/setBackgroundColor is called!
+                runCatching { view.isOpaque = false }
+            }
+            is android.view.SurfaceView -> {
+                runCatching {
+                    view.setZOrderOnTop(true)
+                    view.holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
+                }
+            }
+            is android.view.ViewGroup -> {
+                runCatching { view.background = null }
+                for (i in 0 until view.childCount) {
+                    ensureViewsTransparent(view.getChildAt(i))
+                }
+            }
+            else -> {
+                runCatching { view.background = null }
             }
         }
     }
@@ -164,6 +172,11 @@ class ShareActivity : FlutterActivity() {
 
             val engine = FlutterEngine(appContext)
             GeneratedPluginRegistrant.registerWith(engine)
+            // Remove AudioServicePlugin from the share overlay engine before ShareActivity attaches
+            // so it never hijacks MainActivity's AudioServiceActivity binding.
+            runCatching {
+                engine.plugins.remove(com.ryanheise.audioservice.AudioServicePlugin::class.java)
+            }
             val messenger = engine.dartExecutor.binaryMessenger
             EnginePlugin(appContext, messenger)
             HapticsPlugin(appContext, messenger)

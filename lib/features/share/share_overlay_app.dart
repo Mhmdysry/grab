@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../app/providers.dart';
+import '../../core/log/app_log.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/utils/haptics.dart';
 import '../../core/utils/links.dart';
@@ -130,6 +131,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
   }
 
   Future<void> _handleIncoming(String? raw) async {
+    AppLog.info('ShareOverlay', 'Incoming shared text: "$raw"');
     _autoCloseTimer?.cancel();
     await ref.read(sharedPrefsProvider).reload();
     ref.invalidate(settingsProvider);
@@ -161,6 +163,7 @@ class _ShareOverlayHostState extends ConsumerState<_ShareOverlayHost>
     }
 
     if (link != null && link.isNotEmpty) {
+      AppLog.info('ShareOverlay', 'Fetching metadata for link: $link');
       await ref.read(fetchControllerProvider.notifier).fetch(link);
     }
   }

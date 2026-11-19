@@ -20,10 +20,13 @@ import '../detail/download_detail_screen.dart';
 import 'library_items.dart';
 import 'player_screen.dart';
 
-/// Every saved file that still exists on the phone.
+/// Every saved file that still exists on the phone (from both finished jobs
+/// in the database and the active save folder on disk).
 final libraryProvider = Provider<List<LibraryItem>>((ref) {
   final jobs = ref.watch(jobsProvider).value ?? const [];
-  return buildLibrary(jobs, exists: (p) => File(p).existsSync());
+  final dbItems = buildLibrary(jobs, exists: (p) => File(p).existsSync());
+  final outputDir = ref.watch(outputDirProvider).value;
+  return mergeDiskFiles(dbItems, outputDir);
 });
 
 class LibraryScreen extends ConsumerStatefulWidget {

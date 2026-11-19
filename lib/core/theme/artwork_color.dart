@@ -50,9 +50,12 @@ Future<Color?> extractArtworkSeed(
     (ImageInfo info, bool _) {
       stream.removeListener(listener);
       if (!completer.isCompleted) {
-        completer.complete(info.image.clone());
+        try {
+          completer.complete(info.image.clone());
+        } catch (_) {
+          completer.complete(null);
+        }
       }
-      info.dispose();
     },
     onError: (_, _) {
       stream.removeListener(listener);

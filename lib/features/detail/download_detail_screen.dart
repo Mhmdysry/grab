@@ -10,6 +10,7 @@ import '../../core/utils/platform.dart';
 
 import '../../app/providers.dart';
 import '../../core/audio/audio_playback.dart';
+import '../../core/log/app_log.dart';
 import '../../core/theme/artwork_color.dart';
 import '../../core/theme/pop_theme.dart';
 import '../../core/widgets/expressive_shapes.dart';
@@ -30,6 +31,52 @@ void openDownload(BuildContext context, String jobId) {
   ).push(MaterialPageRoute(builder: (_) => DownloadDetailScreen(jobId: jobId)));
 }
 
+DownloadJob? _diskFallbackJob(String jobId) {
+  if (!jobId.startsWith('disk:')) return null;
+  final path = jobId.substring(5);
+  final file = File(path);
+  if (!file.existsSync()) return null;
+  final name = path.split(Platform.pathSeparator).last;
+  final dot = name.lastIndexOf('.');
+  final base = dot > 0 ? name.substring(0, dot) : name;
+  String title = base;
+  String? site;
+  final dashIdx = base.lastIndexOf(' - ');
+  if (dashIdx > 0 && dashIdx + 3 < base.length) {
+    title = base.substring(0, dashIdx).trim();
+    site = base.substring(dashIdx + 3).trim().toLowerCase();
+  }
+  final kind = kindOf(path);
+  DateTime mtime;
+  try {
+    mtime = file.lastModifiedSync();
+  } catch (_) {
+    mtime = DateTime.now();
+  }
+  return DownloadJob(
+    id: jobId,
+    url: path,
+    title: title,
+    thumbnail: null,
+    site: site,
+    mode: kind == LibraryKind.audio
+        ? DownloadMode.audioOnly.name
+        : DownloadMode.video.name,
+    container: kind == LibraryKind.audio ? 'mp3' : 'mp4',
+    audioFormat: 'mp3',
+    subLangs: '',
+    subAuto: false,
+    subEmbed: false,
+    status: JobStatus.done,
+    progress: 100.0,
+    attempts: 0,
+    paths: path,
+    error: null,
+    createdAt: mtime,
+    finishedAt: mtime,
+  );
+}
+
 /// One download: a preview, its files (play, share, delete), extract audio from a saved video,
 /// and download again from the original link.
 class DownloadDetailScreen extends ConsumerWidget {
@@ -39,14 +86,17 @@ class DownloadDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final job = (ref.watch(jobsProvider).value ?? const <DownloadJob>[])
-        .where((j) => j.id == jobId)
-        .firstOrNull;
+    final job =
+        (ref.watch(jobsProvider).value ?? const <DownloadJob>[])
+            .where((j) => j.id == jobId)
+            .firstOrNull ??
+        _diskFallbackJob(jobId);
     if (job == null) {
       return const Scaffold(
         body: Center(child: Text('This download was removed.')),
       );
     }
+    final isDiskFallback = job.id.startsWith('disk:');
     final files = job.paths.split('\n').where((p) => p.isNotEmpty).toList();
     final onPhone = files.where((p) => File(p).existsSync()).toList();
     final media = onPhone
@@ -78,26 +128,39 @@ class DownloadDetailScreen extends ConsumerWidget {
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
               actions: [
-                IconButton(
-                  tooltip: 'Remove from history',
-                  onPressed: () async {
-                    await ref.read(downloadRepositoryProvider).remove(job.id);
-                    if (context.mounted) Navigator.pop(context);
-                    popToast(
-                      'Removed from history',
-                      icon: Icons.history_rounded,
-                      detail: 'Files on the phone were kept.',
-                    );
-                  },
-                  icon: const Icon(Icons.delete_sweep_outlined),
-                ),
+                if (!isDiskFallback)
+                  IconButton(
+                    tooltip: 'Remove from history',
+                    onPressed: () async {
+                      await ref
+                          .read(downloadRepositoryProvider)
+                          .remove(job.id);
+                      if (context.mounted) Navigator.pop(context);
+                      popToast(
+                        'Removed from history',
+                        icon: Icons.history_rounded,
+                        detail: 'Files on the phone were kept.',
+                      );
+                    },
+                    icon: const Icon(Icons.delete_sweep_outlined),
+                  ),
               ],
             ),
             body: ListView(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
               children: [
                 if (preview != null)
-                  _Preview(key: ValueKey(preview), path: preview, job: job)
+                  kindOf(preview) == LibraryKind.audio
+                      ? _AudioPreview(
+                          key: ValueKey('audio:$preview'),
+                          path: preview,
+                          job: job,
+                        )
+                      : _Preview(
+                          key: ValueKey(preview),
+                          path: preview,
+                          job: job,
+                        )
                 else
                   SizedBox(
                     height: 200,
@@ -216,6 +279,115 @@ class DownloadDetailScreen extends ConsumerWidget {
   }
 }
 
+/// Safe inline preview for audio files using [AudioPlayback] directly instead
+/// of instantiating an Android platform-view [VideoPlayerController] without a
+/// mounted video surface.
+class _AudioPreview extends StatelessWidget {
+  const _AudioPreview({super.key, required this.path, required this.job});
+
+  final String path;
+  final DownloadJob job;
+
+  LibraryItem get _item => LibraryItem(
+    jobId: job.id,
+    path: path,
+    title: job.title,
+    kind: LibraryKind.audio,
+    thumbnail: job.thumbnail,
+    site: job.site,
+    finishedAt: job.finishedAt,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    final item = _item;
+    return ValueListenableBuilder<LibraryItem?>(
+      valueListenable: AudioPlayback.current,
+      builder: (context, current, _) {
+        final isThisTrack = current?.path == path;
+        return StreamBuilder<bool>(
+          stream: AudioPlayback.player.playingStream,
+          initialData: AudioPlayback.player.playing,
+          builder: (context, snap) {
+            final isPlaying = isThisTrack && (snap.data ?? false);
+            return ClipRRect(
+              borderRadius: m3.cardRadius,
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(
+                      color: Colors.black,
+                      child: PopThumb(
+                        seed: job.id,
+                        url: job.thumbnail,
+                        audio: true,
+                        size: double.infinity,
+                        radius: BorderRadius.zero,
+                      ),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          Haptics.selection();
+                          if (isThisTrack) {
+                            AudioPlayback.toggle();
+                          } else {
+                            AudioPlayback.play(item);
+                          }
+                        },
+                        child: Center(
+                          child: AnimatedOpacity(
+                            opacity: isPlaying ? 0 : 1,
+                            duration: m3.motion.resolve(
+                              context,
+                              m3.motion.fastEffectsDuration,
+                            ),
+                            child: ExpressiveShapeContainer(
+                              polygon: ExpressivePolygon.cookie9,
+                              size: 72,
+                              color: cs.primaryContainer,
+                              child: Icon(
+                                isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 38,
+                                color: cs.onPrimaryContainer,
+                                semanticLabel: isPlaying ? 'Pause' : 'Play',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: IconButton(
+                        tooltip: 'Full screen',
+                        onPressed: () => openPlayer(context, item),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black45,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.fullscreen_rounded),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 /// Inline preview of the main file. Tap to play or pause; the corner button opens full screen.
 class _Preview extends StatefulWidget {
   const _Preview({super.key, required this.path, required this.job});
@@ -262,7 +434,11 @@ class _PreviewState extends State<_Preview> {
 
   void _start() {
     if (!mounted) return;
-    _c.initialize().catchError((_) {
+    _c.initialize().catchError((Object e, StackTrace st) {
+      AppLog.warn(
+        'DownloadDetailScreen',
+        'Video preview init failed for ${widget.path}: $e',
+      );
       if (mounted) setState(() => _failed = true);
     });
   }

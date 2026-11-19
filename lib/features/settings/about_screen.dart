@@ -208,23 +208,23 @@ class _AboutScreenState extends State<AboutScreen> {
                                         ),
                                   const SizedBox(height: 18),
                                   Text(
-                                    'Grab',
+                                    'Grab Expressive',
                                     style: TextStyle(
                                       color: cs.onPrimaryContainer,
-                                      fontSize: 44,
+                                      fontSize: 38,
                                       fontWeight: FontWeight.w900,
                                       letterSpacing: -1.2,
-                                      height: 1,
+                                      height: 1.05,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'Paste a link. Get the file.',
+                                    'Paste a link. Get the file. — Material 3 Expressive Edition',
                                     style: TextStyle(
                                       color: cs.onPrimaryContainer.withValues(
                                         alpha: 0.85,
                                       ),
-                                      fontSize: 17,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -269,25 +269,34 @@ class _AboutScreenState extends State<AboutScreen> {
                   const PopSection('Updates'),
                   _updateCard(context),
                   const SizedBox(height: 22),
+                  const PopSection('About this fork'),
+                  _ForkImprovementsCard(),
+                  const SizedBox(height: 22),
                   const PopSection('Project'),
                   _Links(
                     items: [
                       (
                         Icons.code_rounded,
-                        'Source code',
+                        'Fork source code (Grab Expressive)',
                         'github.com/Mhmdysry/grab',
                         repoUrl,
                       ),
                       (
+                        Icons.call_split_rounded,
+                        'Original upstream project',
+                        'github.com/Asta39/grab',
+                        'https://github.com/Asta39/grab',
+                      ),
+                      (
                         Icons.new_releases_rounded,
-                        'All releases',
-                        'Changelogs and older versions',
+                        'All releases & release notes',
+                        'Changelogs and APKs on GitHub',
                         '$repoUrl/releases',
                       ),
                       (
                         Icons.bug_report_rounded,
                         'Report a problem',
-                        'Include the link that failed',
+                        'Include the link or Debug Log',
                         '$repoUrl/issues/new',
                       ),
                     ],
@@ -613,6 +622,112 @@ class _InfoCard extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ForkImprovementsCard extends StatelessWidget {
+  const _ForkImprovementsCard();
+
+  static const _improvements = [
+    (
+      Icons.palette_rounded,
+      'Material 3 Expressive & Customization Studio',
+      '9 curated seed palettes, Android 12+ wallpaper Dynamic Color, 4 scheme variants (Expressive, Vibrant, Tonal, Mono), AMOLED Pure Black, contrast levels, spring motion presets, corner shape styles, card density, and font scaling.',
+    ),
+    (
+      Icons.explore_rounded,
+      'Koda-Style Floating Dock & Morphing Companion Orb',
+      '3-tab pill navigation (labels expand on the selected tab only with distinct per-tab animations) paired with a revolving 6-polygon Material 3 Companion Orb showing full-bleed rotating artwork inside a fixed progress ring.',
+    ),
+    (
+      Icons.picture_in_picture_alt_rounded,
+      'Translucent Floating Share Card & Zero-Window Instant Grab',
+      'Share links from TikTok, YouTube, or Instagram into a translucent floating card over the source app—or turn on Instant Grab for zero-window background downloading with native Android Toast feedback.',
+    ),
+    (
+      Icons.video_library_rounded,
+      'Unified Home Downloads & Persistent Library',
+      'Active and finished downloads live directly on Home with swipe gestures (Pause/Resume/Cancel/Remove), while Clear finished keeps your saved files and metadata intact in the Library with automatic disk recovery.',
+    ),
+    (
+      Icons.graphic_eq_rounded,
+      'Dynamic Artwork Theming & Wavy Audio Scrubber',
+      'Real-time dominant color extraction on Detail and Audio Player screens, an M3 Expressive squiggly audio scrubber, and native audio preview in download details.',
+    ),
+    (
+      Icons.system_update_alt_rounded,
+      'Native PackageInstaller Updater & Built-In Debug Log',
+      'Verified in-place APK updates via Android PackageInstaller.Session plus an in-app 3-tab Debug & Logcat viewer.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final m3 = context.m3;
+    return Container(
+      padding: EdgeInsets.all(m3.cardPad),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: m3.cardRadius,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 24, color: cs.primary),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Grab Expressive — Fork of Asta39/grab',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Built upon the original Grab downloader with a complete Material 3 Expressive redesign and workflow upgrades:',
+            style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < _improvements.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(_improvements[i].$1, size: 20, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _improvements[i].$2,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _improvements[i].$3,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 12.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

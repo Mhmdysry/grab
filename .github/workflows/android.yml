@@ -68,10 +68,36 @@ jobs:
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "grab-expressive-${TAG}-arm64-v8a.apk"
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "grab-expressive-${TAG}-armeabi-v7a.apk"
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk "grab-expressive-${TAG}-x86_64.apk"
+          python3 - "$TAG" << 'PY' > release_notes.md
+          import subprocess, sys
+          from pathlib import Path
+          tag = sys.argv[1]
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8") if Path("CHANGELOG.md").exists() else ""
+          section = ""
+          for header in (f"## [{tag}]", "## [Latest]"):
+              idx = changelog.find(header)
+              if idx != -1:
+                  rest = changelog[idx:]
+                  end = rest.find("\n---\n")
+                  section = (rest[:end] if end != -1 else rest).strip()
+                  break
+          if section:
+              print(section)
+              print("\n---\n")
+          try:
+              commits = subprocess.check_output(
+                  ["git", "log", "-n", "8", "--pretty=format:- `%h` %s"],
+                  text=True,
+              ).strip()
+              if commits:
+                  print("### Recent Commits\n" + commits)
+          except Exception:
+              pass
+          PY
           gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
           gh release create "$TAG" \
             "grab-expressive-${TAG}-arm64-v8a.apk" \
             "grab-expressive-${TAG}-armeabi-v7a.apk" \
             "grab-expressive-${TAG}-x86_64.apk" \
             --title "Grab Expressive ${TAG}" \
-            --notes "Automated Material 3 Expressive build (${TAG}, build ${{ github.run_number }})."
+            --notes-file release_notes.md

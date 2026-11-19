@@ -473,7 +473,7 @@ void main() {
           ),
         );
         expect(tester.takeException(), isNull);
-        expect(find.text('1080p · 24 MB'), findsOneWidget);
+        expect(find.text('1080p · 27 MB'), findsOneWidget);
 
         // Expand into full Trim & Subtitles options
         await tester.tap(find.text('More options · Trim & Subtitles'));

@@ -657,11 +657,16 @@ class _ExpressiveWavySliderState extends State<ExpressiveWavySlider>
     final targetAmp = widget.isPlaying && !reduced ? 3.5 : 0.0;
     final enabled = widget.onChanged != null;
 
+    final incPct = '${((p + 0.05).clamp(0.0, 1.0) * 100).round()}%';
+    final decPct = '${((p - 0.05).clamp(0.0, 1.0) * 100).round()}%';
+
     return Semantics(
       slider: true,
       enabled: enabled,
       label: widget.semanticLabel,
       value: widget.semanticValue ?? '${(p * 100).round()}%',
+      increasedValue: enabled ? incPct : null,
+      decreasedValue: enabled ? decPct : null,
       onIncrease: enabled
           ? () => widget.onChanged!((p + 0.05).clamp(0.0, 1.0))
           : null,
